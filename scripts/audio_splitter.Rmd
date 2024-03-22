@@ -59,7 +59,7 @@ if (!dir.exists(new_dir)) {
   dir.create(new_dir, recursive = TRUE)
 }
 
-# List the folders to be copied (assuming they are direct children of the source directory)
+# List the folders to be copied
 folders_to_copy <- dir_ls(path, type = "directory")
 
 # Copy each folder
@@ -85,7 +85,6 @@ walk(audio_files_dirs, function(dir_name) {
 
 # Function to copy files specified in each dataframe to the respective new folder
 copy_files_to_new_folders <- function(df, index) {
-  # Assuming df$folder indicates the correct original folder for each file
   walk(seq_along(df$files), function(i) {
     original_folder_path <- file.path(new_dir, df$folder[i])
     src <- file.path(original_folder_path, df$files[i])
@@ -100,6 +99,7 @@ copy_files_to_new_folders <- function(df, index) {
     }
   })
 }
+
 
 # Applying the function to each dataframe in the list
 walk(seq_along(list_of_dfs), function(i) {
