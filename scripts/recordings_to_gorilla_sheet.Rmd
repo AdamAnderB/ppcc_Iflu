@@ -1,0 +1,107 @@
+---
+title: "recording_to_gorilla_sheet"
+author: "Adam A. Bramlett"
+date: "2024-03-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(stringr)
+```
+
+
+```{r}
+path="../../ppcc_iflu_data/L1-L2-VAS-stimuli"
+folders<-list.files(path,full.names = TRUE)
+folders_basename <- sapply(folders, basename)
+
+folder_1<-data.frame("files"=list.files(folders[1]))%>%
+  mutate(folder=folders_basename[[1]])
+folder_2<-data.frame("files"=list.files(folders[2]))%>%
+  mutate(folder=folders_basename[[2]])
+
+
+all_folders<-rbind(folder_1,folder_2)%>%
+  mutate(file_name = gsub("\\..*$", "", files)) %>% 
+  separate(file_name, into = c("part_id", "word", "stress"), sep = "_", remove = FALSE) %>%
+  mutate(file_type = gsub(".*\\.", "", files)) %>%
+  select(-file_name)
+
+#the amoaunt of stimuli per spreadsheet
+Num_items <- 100
+
+#Group by variables and split into list of dataframes
+grouped_dfs <- all_folders %>% 
+  group_by(part_id, folder, word, stress) %>% 
+  group_split()
+
+
+# Calculate the number of groups per "bin"
+groups_per_bin <- ceiling(length(grouped_dfs) / Num_items)
+
+# Use the `split` function to distribute them evenly
+# `map` generates the indices for splitting in a balanced way
+list_of_dfs <- map(seq_len(groups_per_bin), function(i) {
+  indices <- seq(i, length(grouped_dfs), groups_per_bin)
+  do.call("bind_rows", grouped_dfs[indices])
+})
+
+list_of_dfs <- list_of_dfs %>% 
+  set_names(paste0("df_", seq_along(list_of_dfs)))
+```
+
+```{r}
+#check my work:
+original_df_recombined <- bind_rows(list_of_dfs)
+
+#sort the same way
+all_folders_sorted <- all_folders%>% 
+  arrange(part_id, folder, word, stress)
+original_df_recombined_sorted <- original_df_recombined%>%
+  arrange(part_id, folder, word, stress)
+
+#check 1 with summary
+summary(all_folders_sorted)==summary(original_df_recombined_sorted)
+#check 2 by match of each row
+matched_data<-data.frame(all_folders_sorted==original_df_recombined_sorted)
+unmatched_data <- matched_data %>%
+  filter(if_all(.cols = everything(), ~ .x == FALSE))
+nrow(unmatched_data)
+```
+```{r}
+#to gorilla spreadsheet
+first_row <- data.frame(randomise_trials = 1, display = "Instructions1")  
+second_row <- data.frame(randomise_trials = 2, display = "Practice",Sound="familia.wav",word="familia")
+third_row <- data.frame(randomise_trials = 2, display = "Practice",Sound="belisima.wav",word="belisima")
+forth_row <- data.frame(randomise_trials = 3, display = "Instructions2")
+first_rows<-bind_rows(first_row,second_row,third_row,forth_row)
+last_row <- data.frame(randomise_trials = 5, display = "ThankYou")
+
+list_of_gorilla_dfs<-list_of_dfs%>%
+  map(~.x%>%
+        mutate(Sound=files,
+               display="Main",
+               status = str_extract(folder, "^[^-]*"),
+               randomise_trials = max(first_rows$randomise_trials)+1)%>%
+        select(!c(files,folder))%>%
+        bind_rows(first_rows,.,last_row))
+```
+
+```{r}
+# Check if a specific folder exists in the current working directory; create it if it doesn't
+folder_name <- "gorilla_dfs"
+full_path <- file.path("..", folder_name)
+
+if (!dir.exists(full_path)) {
+  dir.create(full_path)
+} else {
+  print("YO- it already exists! Becareful to not overwrite something")
+}
+
+walk2(names(list_of_gorilla_dfs), list_of_gorilla_dfs, ~write.csv(.y, file = file.path(full_path, paste0(.x, ".csv")), row.names = FALSE))
+```
