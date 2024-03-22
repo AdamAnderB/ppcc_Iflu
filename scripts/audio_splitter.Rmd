@@ -4,27 +4,105 @@ author: "Adam A. Bramlett"
 date: "2024-03-22"
 output: html_document
 ---
+```{r}
 
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(stringr)
+library(fs)
+```
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+#seperate the files into two groups across Seth and Adam
+
+path="../../ppcc_iflu_data/L1-L2-VAS-stimuli"
+folders<-list.files(path,full.names = TRUE)
+folders_basename <- sapply(folders, basename)
+
+folder_1<-data.frame("files"=list.files(folders[1]))%>%
+  mutate(folder=folders_basename[[1]])
+folder_2<-data.frame("files"=list.files(folders[2]))%>%
+  mutate(folder=folders_basename[[2]])
+
+
+all_folders<-rbind(folder_1,folder_2)%>%
+  mutate(file_name = gsub("\\..*$", "", files)) %>% 
+  separate(file_name, into = c("part_id", "word", "stress"), sep = "_", remove = FALSE) %>%
+  mutate(file_type = gsub(".*\\.", "", files)) %>%
+  select(-file_name)
+raters=2
+Num_items <- nrow(all_folders)/raters
+
+grouped_dfs <- all_folders %>% 
+  group_by(part_id, folder, word, stress) %>% 
+  group_split()
+
+groups_per_bin <- ceiling(length(grouped_dfs) / Num_items)
+
+
+list_of_dfs <- map(seq_len(groups_per_bin), function(i) {
+  indices <- seq(i, length(grouped_dfs), groups_per_bin)
+  do.call("bind_rows", grouped_dfs[indices])
+})
+
+list_of_dfs <- list_of_dfs %>% 
+  set_names(paste0("df_", seq_along(list_of_dfs)))
 ```
 
-## R Markdown
+```{r}
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+new_dir <- paste("../../ppcc_iflu_data/L1-L2-VAS-stimuli","_split_up",sep="")
+new_dir
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+# Check if the directory exists; create it if it doesn't
+if (!dir.exists(new_dir)) {
+  dir.create(new_dir, recursive = TRUE)
+}
 
-```{r cars}
-summary(cars)
+# List the folders to be copied (assuming they are direct children of the source directory)
+folders_to_copy <- dir_ls(path, type = "directory")
+
+# Copy each folder
+walk(folders_to_copy, function(folder_path) {
+  # Extract the folder name from the path
+  folder_name <- basename(folder_path)
+  # Define the destination path for this folder
+  dest_path <- file.path(new_dir, folder_name)
+  
+  # Copy the folder to the new location
+  dir_copy(folder_path, dest_path)
+})
+
 ```
 
-## Including Plots
+```{r}
+#create new folders
+audio_files_dirs <- paste0("audio_files_", 1:raters)
+walk(audio_files_dirs, function(dir_name) {
+  dir_path <- file.path(new_dir, dir_name)
+  dir_create(dir_path)
+})
 
-You can also embed plots, for example:
+# Function to copy files specified in each dataframe to the respective new folder
+copy_files_to_new_folders <- function(df, index) {
+  # Assuming df$folder indicates the correct original folder for each file
+  walk(seq_along(df$files), function(i) {
+    original_folder_path <- file.path(new_dir, df$folder[i])
+    src <- file.path(original_folder_path, df$files[i])
+    destination_folder_path <- file.path(new_dir, paste0("audio_files_", index))
+    dest <- file.path(destination_folder_path, df$files[i])
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+    # Check if the file exists, ensuring src is evaluated as a single path
+    if (file_exists(src)) {
+      file_copy(src, dest, overwrite = TRUE)
+    } else {
+      message("File does not exist: ", src)
+    }
+  })
+}
+
+# Applying the function to each dataframe in the list
+walk(seq_along(list_of_dfs), function(i) {
+  copy_files_to_new_folders(list_of_dfs[[i]], i)
+})
 ```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
