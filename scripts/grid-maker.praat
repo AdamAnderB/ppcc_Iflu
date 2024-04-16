@@ -5,7 +5,7 @@
 ## filename minus the extension), the extension (default is .wav), and one or more tiers
 
 form Select directory, file type, and tiers
-	sentence Directory /Desktop/recordings/
+	sentence Directory /Users/adambramlett/scripts/music_project_23/ppcc_iflu_data/L1-L2-VAS-stimuli_split_up/audio_files_2/
 	sentence Filename_initial_substring_(optional)
         sentence Extension wav
         sentence Tier(s) t1 

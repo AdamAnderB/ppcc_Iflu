@@ -1,0 +1,253 @@
+---
+title: "work_flow"
+author: "blind"
+date: "2024-04-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(purrr)
+library(tidyr)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(psycho)
+library(readxl)
+```
+
+```{r}
+path<-"../../ppcc_iflu_data/data_exp_170005-v9"
+list.files(path)
+
+read_csvs_with_pattern <- function(path, pattern) {
+  files <- list.files(path, pattern = pattern, full.names = TRUE)
+  data_list <- map(files, read.csv)
+  combined_data <- bind_rows(data_list)
+  colnames(combined_data)<-tolower(colnames(combined_data))
+  return(combined_data)
+}
+
+read_xls_with_pattern <- function(path, pattern) {
+  files <- list.files(path, pattern = pattern, full.names = TRUE)
+  data_list <- map(files, read_excel)
+  combined_data <- bind_rows(data_list)
+  colnames(combined_data)<-tolower(colnames(combined_data))
+  return(combined_data)
+}
+
+pattern="11wd"
+s_exp1 <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+s_exp1_et <- read_xls_with_pattern(file.path(path,"uploads/"), pattern)
+
+pattern="vg7n"
+s_exp2 <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+s_exp2_et <- read_xls_with_pattern(file.path(path,"uploads/"), pattern)
+
+
+pattern="1f8j"
+digit_span <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+
+pattern="7oyj|9uw1|wxw8|qa8d"
+battery <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+
+pattern="rsao"
+lextale <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+
+removal <- data.frame(task = character(), 
+                      value = numeric(), 
+                      stringsAsFactors = FALSE)
+```
+
+```{r}
+battery_tidy<-battery%>%
+  select(participant.private.id,tree.node.key,task.name,screen.name,screen.number,display,reaction.time,response,sound1,sound2,base1,base2,same)%>%
+  filter(display=="block" &screen.name == "Screen 3")%>%
+  mutate(responses=case_when(response == "'z'"~1,
+                             response == "'m'"~0),
+         correct=if_else(responses==same,1,0),
+         difference=abs(base1-base2))
+
+battery_tidy%>%ggplot(aes(x=reaction.time))+geom_histogram()+facet_wrap(participant.private.id~.)
+
+mad_standard=3
+
+battery_cleaned<-battery_tidy%>%
+  #group_by(participant.private.id)%>%
+  dplyr::filter(reaction.time>200)%>%
+  mutate(log_rt=sqrt(reaction.time))%>%
+  mutate(display_medians = median(log_rt),
+         abs_distance = abs(display_medians-log_rt),
+         mean_distance = mean(abs_distance),
+         upper_mad = display_medians+(mean_distance*mad_standard),
+         lower_mad = display_medians-(mean_distance*mad_standard))%>%
+  group_by(participant.private.id)%>%
+  mutate(participants_medians = median(log_rt))%>%
+  dplyr::filter(log_rt<upper_mad &log_rt>lower_mad)
+
+
+removal[nrow(removal) + 1, ] <- c("battery removal", 
+                                  nrow(battery_tidy) - nrow(battery_cleaned))
+
+battery_cleaned%>%ggplot(aes(x=log_rt))+
+  geom_histogram()+
+  geom_point(aes(x=upper_mad,y=0),color="red")+
+  geom_point(aes(x=lower_mad,y=0),color="blue")+
+  facet_wrap(participant.private.id~.)
+
+battery_cleaned%>%ggplot(aes(x=factor(participant.private.id),y=participants_medians))+
+  geom_point()+
+  geom_point(aes(y=upper_mad,x=factor(participant.private.id)),color="red")+
+  geom_point(aes(y=lower_mad,x=factor(participant.private.id)),color="blue")
+```
+```{r}
+battery_agg2<-battery_cleaned%>%
+  group_by(participant.private.id, task.name) %>%
+  summarize(score=mean(correct))
+
+battery_agg2%>%ggplot(aes(x=task.name,y=score,color=factor(task.name)))+
+  geom_boxplot()+
+  geom_jitter()+
+  theme_minimal()
+
+battery_agg<-battery_cleaned%>%
+  mutate(
+    hit = if_else(same == 1 & responses == 1, 1L, 0L),
+    f_a = if_else(same == 0 & responses == 1, 1L, 0L),
+    miss = if_else(same == 0 & responses == 0, 1L, 0L),
+    c_r = if_else(same == 1 & responses == 0, 1L, 0L))%>%
+  group_by(participant.private.id, task.name) %>%
+  summarize(
+    score=mean(correct),
+    hit_count = sum(hit),
+    f_a_count = sum(f_a),
+    miss_count = sum(miss),
+    c_r_count = sum(c_r),
+    .groups = 'drop')%>%
+  mutate(
+    dprime = dprime(hit_count, 
+                             f_a_count, 
+                             hit_count + miss_count, 
+                             f_a_count + c_r_count)$dprime,
+    c = dprime(hit_count, 
+                        f_a_count, 
+                        hit_count + miss_count, 
+                        f_a_count + c_r_count)$c)%>%
+  select(participant.private.id, task.name, dprime, c)
+
+
+battery_agg%>%ggplot(aes(x=factor(task.name),y=dprime,color=factor(task.name)))+
+  geom_boxplot()+
+  geom_jitter()+
+  theme_minimal()
+
+battery_agg%>%ggplot(aes(x=c,y=dprime,color=factor(task.name)))+
+  geom_point()+
+  theme_minimal()+
+  facet_grid(.~factor(task.name))
+```
+
+```{r}
+digit_tidy<-digit_span%>%
+  select(participant.private.id,tree.node.key,task.name,
+         target,response,length,correct.,total.correct)%>%
+  filter(correct.==1)%>%
+  group_by(participant.private.id)%>%
+  mutate(length=as.numeric(length))%>%
+  summarize(max_working_memory=max(length),
+         min_working_memory=min(length),
+         mean_working_memory=mean(length),
+         max_correct=max(total.correct))
+
+digit_tidy%>%
+  ggplot(aes(x=1,y=max_correct,color=factor(max_working_memory)))+
+  geom_jitter()
+
+digit_cleaned<-digit_tidy%>%
+  ungroup()%>%
+  mutate(display_medians = median(max_correct),
+         abs_distance = abs(display_medians-mean_working_memory),
+         mean_distance = mean(abs_distance),
+         upper_mad = display_medians+(mean_distance*mad_standard),
+         lower_mad = display_medians-(mean_distance*mad_standard))%>%
+  filter(max_correct<upper_mad &max_correct>lower_mad)
+
+digit_cleaned%>%
+  ggplot(aes(x=mean_working_memory))+
+  geom_histogram()
+
+digit_cleaned%>%
+  ggplot(aes(x=1,y=mean_working_memory,color=factor(max_working_memory)))+
+  geom_jitter()
+
+removal[nrow(removal) + 1, ] <- c("digit_span_participant", 
+                                  nrow(digit_tidy) - nrow(digit_cleaned))
+
+```
+
+```{r}
+lextale_tidy<-lextale%>%
+  select(participant.private.id,screen.name,zone.type,reaction.time,correct)%>%
+  filter(zone.type=="response_keyboard")%>%
+  filter(reaction.time>250)
+
+lextale_tidy%>%ggplot(aes(x=reaction.time))+geom_histogram()
+
+lextale_agg<-lextale_tidy%>%
+  group_by(participant.private.id)%>%
+  summarize(lextale_score=mean(correct))
+
+lextale_agg_cleaned<-lextale_agg%>%
+  ungroup()%>%
+  mutate(medians = median(lextale_score),
+         abs_distance = abs(medians-lextale_score),
+         mean_distance = mean(abs_distance),
+         upper_mad = medians+(mean_distance*mad_standard),
+         lower_mad = medians-(mean_distance*mad_standard))%>%
+  filter(lextale_score<upper_mad &lextale_score>lower_mad)
+
+
+lextale_agg_cleaned%>%ggplot(aes(x=lextale_score))+
+  geom_histogram()
+
+
+removal[nrow(removal) + 1, ] <- c("lextale_agg_participant", 
+                                  nrow(lextale_agg) - nrow(lextale_agg_cleaned))
+```
+```{r}
+s_exp1_cleaned<-s_exp1%>%
+  select(participant.private.id,spreadsheet.row,response,real_1_distractor_0,zone.type,display,audio,
+         q1_image,q2_image,q3_image,q4_image,
+         id,grouping_id,sorting,target,competitor,dist_1,dist_2,real_1_distractor_0,
+         target_quantile,competitor_quantile,dist1_quantile,dist2_quantile,q1,q2,q3,q4)%>%
+  filter(zone.type=="response_button_image")
+
+s_exp1_et_cleaned<-s_exp1_et%>%
+  select(participant_id,spreadsheet_row,type,time_stamp,
+         time_elapsed,x_pred_normalised,y_pred_normalised,face_conf)%>%
+  mutate(participant.private.id=participant_id,
+         spreadsheet.row=spreadsheet_row)%>%
+  select(!c(participant_id,spreadsheet_row))%>%
+  filter(type=="prediction")
+  
+s_exp1_data_all<-s_exp1_et_cleaned%>%left_join(s_exp1_cleaned)
+View(s_exp1_data_all)
+```
+
+```{r}
+s_exp2_cleaned<-s_exp2%>%
+  select(participant.private.id,spreadsheet.row,display,randomise_trials,response,zone.type,display,q1,q2,q3,q4,
+         target,competitor,distractor,distractor_1)%>%
+  filter(zone.type=="response_button_image")
+
+s_exp2_et_cleaned<-s_exp2_et%>%
+  select(participant_id,spreadsheet_row,type,time_stamp,
+         time_elapsed,x_pred_normalised,y_pred_normalised,face_conf)%>%
+  mutate(participant.private.id=participant_id,
+         spreadsheet.row=spreadsheet_row)%>%
+  select(!c(participant_id,spreadsheet_row))%>%
+  filter(type=="prediction")
+
+
+s_exp2_data_all<-s_exp2_et_cleaned%>%left_join(s_exp2_cleaned)
+View(s_exp2_data_all)
+```
