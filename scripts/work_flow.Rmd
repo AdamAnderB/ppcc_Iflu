@@ -49,7 +49,6 @@ pattern="vg7n"
 s_exp2 <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
 s_exp2_et <- read_xls_with_pattern(file.path(path,"uploads/"), pattern)
 
-
 pattern="1f8j"
 digit_span <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
 
@@ -72,6 +71,7 @@ removal <- data.frame(task = character(),
 ```
 
 ```{r}
+library(conflicted)
 battery_tidy<-battery%>%
   select(participant.private.id,tree.node.key,task.name,screen.name,screen.number,display,reaction.time,response,sound1,sound2,base1,base2,same)%>%
   filter(display=="block" &screen.name == "Screen 3")%>%
@@ -623,16 +623,31 @@ contrasts(comp_tar_longer$stress_play)
 levels(comp_tar_longer$stress_play)<-c("Anti-penultimate","Penultimate")
 levels(comp_tar_longer$stress_play)
 comp_tar_model<-glm(values~names*stress_play*syllable,data=comp_tar_longer,family = "binomial")
-comp_tar_model1<-glm(values~stress_play+names*syllable,data=comp_tar_longer,family = "binomial")
-comp_tar_model2<-glm(values~stress_play+names+syllable,data=comp_tar_longer,family = "binomial")
+comp_tar_model1<-glm(values~stress_play*names+syllable,data=comp_tar_longer,family = "binomial")
+comp_tar_model2<-glm(values~stress_play+names*syllable,data=comp_tar_longer,family = "binomial")
+comp_tar_model3<-glm(values~stress_play+names+syllable,data=comp_tar_longer,family = "binomial")
 summary(comp_tar_model)
 summary(comp_tar_model1)
 summary(comp_tar_model2)
+summary(comp_tar_model3)
 
+anova(comp_tar_model,comp_tar_model1)
+anova(comp_tar_model1,comp_tar_model2)
+anova(comp_tar_model2,comp_tar_model3)
+
+bic_model = BIC(comp_tar_model)
+bic_model1 = BIC(comp_tar_model1)
+bic_model2 = BIC(comp_tar_model2)
+bic_model3 = BIC(comp_tar_model3)
+
+bic_model
+bic_model1
+bic_model2
+bic_model3
 ```
 ```{r}
-
-tidy_model <- tidy(comp_tar_model, effects = "fixed")%>%
+library(broom)
+tidy_model <- tidy(comp_tar_model2, effects = "fixed")%>%
   mutate(
     main = case_when(
       str_detect(term, ":") ~ 1,
@@ -657,9 +672,16 @@ tidy_model <- tidy(comp_tar_model, effects = "fixed")%>%
       term=str_replace(term, "names","Looks "),
       term=str_replace(term, "stress_play","Stress"),
       term=str_replace(term, "Stress1","Stress Anti"))%>%
-  arrange(main,syllable,looks)%>%
-  mutate(row_number=row_number())%>%
-  mutate(looks=as.factor(looks))
+  arrange(main, syllable, looks) %>%
+  mutate(
+    row_number = row_number(),
+    looks = as.factor(looks),
+    Significance = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01 ~ "**",
+      p.value < 0.05 ~ "*",
+      TRUE ~ ""))
+
 
 colors <- c("Base_looks" = "#007bc0", "distractor_1" = "#A7A7A9", 
             "distractor_2" = "#000000", "target" = "#c41230")
@@ -669,15 +691,15 @@ pen_anti_model<-ggplot(tidy_model, aes(x = estimate, y = row_number,color=factor
   geom_errorbarh(aes(xmin = estimate - 1.96 * std.error, xmax = estimate + 1.96 * std.error), height = 0) +
   labs(title = , x = "Estimated Coefficients", y = "",color = "Looks to grouping") +
   theme_minimal()+
-  geom_vline(xintercept = 0)+
+  geom_vline(xintercept = 0,color = "#007bc0")+
   scale_y_continuous(breaks = tidy_model$row_number, labels = tidy_model$term)+
   scale_color_manual(
     values = c( "Base_looks" = "#007bc0", "distractor_1" = "#A7A7A9", 
                 "distractor_2" = "#000000","target" = "#c41230"),
     labels = c( "Base", "Distractor 1", "Distractor 2","Target")
   )+
-  annotate("rect", xmin = -2.7, xmax = -1.45, ymin = -1.5, ymax = 32.5, fill = "white",color="grey") +
-  geom_text(aes(y = row_number,x=-1.5, label = term, color = factor(looks)),hjust = 1, size = 4,angle=40)+
+  annotate("rect", xmin = -2.7, xmax = -1.45, ymin = -1.5, ymax = 17.5, fill = "white",color="grey") +
+  geom_text(aes(y = row_number,x=-1.5, label = term, color = factor(looks)),hjust = 1, size = 4,angle=40,show.legend = FALSE)+
   xlim(-2.7, 1)+
   coord_flip()+
   theme(axis.text.y = element_text(angle = 15, hjust = 1),
@@ -689,12 +711,15 @@ pen_anti_model<-ggplot(tidy_model, aes(x = estimate, y = row_number,color=factor
         panel.border = element_blank(),
         legend.position = "bottom")+
   scale_x_continuous(breaks=seq(-1, 1, by = .5))+
-  geom_text(aes(y = 1,x=-2.5, label = "Terms"),color = "black",hjust = 1, size = 5,angle=0)
+  geom_text(aes(y = 1,x=-2.5, label = "Terms"),color = "black",hjust = 1, size = 5,angle=0,show.legend = FALSE)+
+    geom_text(aes(y = row_number, x = -1.2, label = Significance), hjust = 0, vjust = .5,angle=90, color = "black", show.legend = FALSE)
 
+pen_anti_model
 #ggsave("../visuals/pen_vs_anti_pen_model.jpeg", plot = pen_anti_model, width = 10, height = 6.6, dpi = 300)
 ```
 
-```{r}
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(conflicted)
 ets_exp1_all_agg_part_wider<-comp_tar_longer%>%
   pivot_wider(names_from = names,values_from = values)%>%
   filter(syllable!=3)%>%
@@ -720,6 +745,9 @@ ets_exp1_all_agg_part_wider%>%
 full_data_exp1<-ets_exp1_all_agg_part_wider%>%select(!c(participant.private.id,c_battery_up_dur:c_battery_up_risetime,mean_target_looks:mean_dist2_looks))
 ggpairs(full_data_exp1)
 
+contrasts(full_data_exp1$stress_play)
+contrasts(comp_tar_longer$stress_play)<-c(.5,-.5)
+View(full_data_exp1)
 ```
 
 ```{r message=FALSE, warning=FALSE, paged.print=FALSE}
@@ -739,13 +767,13 @@ force_in_vector["stress_play"] <- TRUE
 predictors <- setdiff(names(full_data_exp1), c("proportion_o_looks", force_var))
 
 # Create the formula ensuring 'stress_play' is always included
-formula_interactions <- as.formula(paste("proportion_o_looks ~ stress_play + (", force_var, "+", paste(predictors, collapse = "+"), ")^2"))
+formula_interactions <- as.formula(paste("proportion_o_looks ~ (", force_var, "+", paste(predictors, collapse = "+"), ")^2"))
 formula_interactions
 
-subset_fit <- regsubsets(formula_interactions, data = full_data_exp1, nbest = 1, nvmax = 10, force.in = force_in_vector,really.big=T)
+#subset_fit <- regsubsets(formula_interactions, data = full_data_exp1, nbest = 1, nvmax = 10, force.in = force_in_vector,really.big=T)
 
 # Perform subset selection allowing other variables to vary
-subset_fit <- regsubsets(formula_interactions, data = full_data_exp1, nbest = 1, nvmax = 10)
+subset_fit <- leaps::regsubsets(formula_interactions, data = full_data_exp1, nbest = 1, nvmax = 10,really.big=T)
 subset_summary <- summary(subset_fit)
 subset_summary
 
@@ -761,10 +789,6 @@ subset_summary$which[selected_model, ]
 # Cross-validation to check model performance
 fit_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
 fit_control
-# Ensure 'stress_play' is included in the cross-validation model formula
-model_formula <- as.formula(paste("proportion_o_looks ~", force_var, "+", paste(names(full_data_exp1)[subset_summary$which[selected_model,]], collapse = "+")))
-model_cv <- train(model_formula, data = full_data_exp1, method = "lm", trControl = fit_control)
-print(model_cv)
 ```
 
 ```{r}
@@ -800,7 +824,7 @@ ci_level <- 1.96
 coef_df$CI_Lower <- coef_df$Estimate - ci_level * coef_df$`Std. Error`
 coef_df$CI_Upper <- coef_df$Estimate + ci_level * coef_df$`Std. Error`
 
-
+View(coef_df)
 ggplot(coef_df, aes(x = Predictor, y = Estimate, ymin = CI_Lower, ymax = CI_Upper)) +
   geom_pointrange() +
   geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
