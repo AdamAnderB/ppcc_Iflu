@@ -16,6 +16,7 @@ library(readxl)
 library(GGally)
 library(conflicted)
 library(performance)
+library(cowplot)
 ```
 
 ```{r}
@@ -366,15 +367,27 @@ s_exp1_cleaned<-s_exp1%>%
     possible_values <- setdiff(1:4, c(target_quantile, competitor_quantile))
     sample(possible_values, 1)
   })%>%
-  mutate(distractor_2_quantile = 10-sum(distractor_1_quantile,target_quantile,competitor_quantile))
+  mutate(distractor_2_quantile = 10-sum(distractor_1_quantile,target_quantile,competitor_quantile))%>%
+  ungroup()
 
 s_exp1_cleaned<-s_exp1_cleaned%>%
   mutate(target = case_when(target_quantile == 1 ~ q1_word,
                             target_quantile == 2 ~ q2_word,
                             target_quantile == 3 ~ q3_word,
-                            target_quantile == 4 ~ q4_word))
-g<-4
-g
+                            target_quantile == 4 ~ q4_word),
+         competitor = case_when(competitor_quantile == 1 ~ q1_word,
+                                competitor_quantile == 2 ~ q2_word,
+                                competitor_quantile == 3 ~ q3_word,
+                                competitor_quantile == 4 ~ q4_word),
+         dist_1 = case_when(distractor_1_quantile == 1 ~ q1_word,
+                                  distractor_1_quantile == 2 ~ q2_word,
+                                  distractor_1_quantile == 3 ~ q3_word,
+                                  distractor_1_quantile == 4 ~ q4_word),
+         dist_2 = case_when(distractor_2_quantile == 1 ~ q1_word,
+                                  distractor_2_quantile == 2 ~ q2_word,
+                                  distractor_2_quantile == 3 ~ q3_word,
+                                  distractor_2_quantile == 4 ~ q4_word))
+
 ```
 
 ```{r}
@@ -456,10 +469,10 @@ s_exp1_data_all <- s_exp1_et_cleaned %>%
   filter(x_pred_normalised<1&x_pred_normalised>-1)%>%
   filter(y_pred_normalised<1&y_pred_normalised>-1)%>%
   mutate(current_quadrant = case_when(
-            x_pred_normalised < origin[1] & y_pred_normalised > origin[2] ~ q1,
-            x_pred_normalised > origin[1] & y_pred_normalised > origin[2] ~ q2,
-            x_pred_normalised < origin[1] & y_pred_normalised < origin[2] ~ q3,
-            x_pred_normalised > origin[1] & y_pred_normalised < origin[2] ~ q4))%>%
+            x_pred_normalised < origin[1] & y_pred_normalised > origin[2] ~ q1_word,
+            x_pred_normalised > origin[1] & y_pred_normalised > origin[2] ~ q2_word,
+            x_pred_normalised < origin[1] & y_pred_normalised < origin[2] ~ q3_word,
+            x_pred_normalised > origin[1] & y_pred_normalised < origin[2] ~ q4_word))%>%
   mutate(target_looks=if_else(current_quadrant==target,1,0),
          competitor_looks=if_else(current_quadrant==competitor,1,0),
          dist1_looks=if_else(current_quadrant==dist_1,1,0),
@@ -469,9 +482,9 @@ s_exp1_data_all <- s_exp1_et_cleaned %>%
          time_rounded = round(time / 50) * 50)%>%
   mutate(time_rounded=time_rounded-1000)%>%
   mutate(time_rounded=time_rounded-200)%>%
-  filter(time_rounded<1000&time_rounded>0)
+  filter(time_rounded<1000&time_rounded>=0)
 
-View(s_exp1_data_all)  
+
 ets_exp1_all_agg<-s_exp1_data_all%>%
   group_by(stress_play,time_rounded)%>%
   summarise(mean_target_looks=mean(target_looks),
@@ -482,12 +495,116 @@ ets_exp1_all_agg<-s_exp1_data_all%>%
   pivot_longer(cols=c(mean_target_looks:mean_dist2_looks),names_to = "names",values_to="values")
   
 
-ets_exp1_all_agg%>%
-  ggplot(aes(x=time_rounded,y=values,color=names))+
-  geom_point()+
-  geom_smooth()+
-  facet_grid(stress_play~.)
+penn_times<-c(300, 500, 650)
+anti_times<-c(390, 530, 620)
 
+df_1 <- data.frame(
+  time_rounded = penn_times,
+  values = 0.6,
+  labels = c("ca", "NA", "le")
+)
+
+df_2 <- data.frame(
+  time_rounded = anti_times,
+  values = 0.6,
+  labels = c("CA", "na", "pa")
+)
+
+plot1<-ets_exp1_all_agg %>%
+  filter(stress_play == "Penultimate") %>%
+  ggplot(aes()) +
+  geom_text(data=df_1,aes(label=labels,x = time_rounded, y = values),
+            family = "Arial", size = 4, fontface = "bold")+
+  geom_point(aes(x = time_rounded, y = values, color = names)) +
+  geom_smooth(aes(x = time_rounded, y = values, color = names),se=FALSE)+
+  scale_y_continuous(breaks=seq(0, 1, by = .25),
+                     labels=seq(0, 1, by = .25))+
+  scale_x_continuous(
+    breaks = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    labels = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    minor_breaks = c(0,200,201, 396, 566, 699,800), 
+    position = "bottom")+
+  theme_minimal() +
+  theme(
+    axis.text.x.top = element_text(color = "black"),
+    axis.text.x = element_text(color = "black"),
+    panel.grid.major.x = element_line(color = "grey", size = 0.1),
+    panel.grid.minor.x = element_line(linetype = "dotted", color = "black", size = 0.5),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_line(color = "grey", size = 0.1),
+    legend.position = c(0.1, 0.9),
+    legend.justification = c(0, 1),
+    legend.background = element_rect(fill = "white", colour = "black"))+
+  labs(x = NULL,y= "") +
+  guides(color = guide_legend(title = "Looks to:")) +
+  scale_color_manual(
+    values = c("mean_target_looks" = "#c41230", "mean_competitor_looks" = "#007bc0", 
+               "mean_dist1_looks" = "#A7A7A9", "mean_dist2_looks" = "#000000"),
+    labels = c("Target", "Competitor", "Distractor", "Distractor")
+  )
+
+plot2<-ets_exp1_all_agg %>%
+  filter(stress_play == "Anti-penultimate") %>%
+  ggplot(aes()) +
+  geom_text(data=df_2,aes(label=labels,x = time_rounded, y = values),
+            family = "Arial", size = 4, fontface = "bold")+
+  geom_point(aes(x = time_rounded, y = values, color = names)) +
+  geom_smooth(aes(x = time_rounded, y = values, color = names),se=FALSE)+
+  scale_y_continuous(breaks=seq(0, 1, by = .25),
+                     labels=seq(0, 1, by = .25))+
+  scale_x_continuous(
+    breaks = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    labels = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    minor_breaks = c(0,200,201, 499, 566, 669,800),
+    position = "bottom")+
+  theme_minimal() +
+  theme(
+    axis.text.x.top = element_text(color = "black"),
+    axis.text.x = element_blank(),
+    panel.grid.major.x = element_line(color = "grey", size = 0.1),
+    panel.grid.minor.x = element_line(linetype = "dotted", color = "black", size = 0.5),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_line(color = "grey", size = 0.1),
+    legend.position = "none",
+    legend.justification = c(0, 1),
+    legend.background = element_rect(fill = "white", colour = "black"))+
+  labs(x = NULL,y= "") +
+  guides(color = guide_legend(title = "Looks to:")) +
+  scale_color_manual(
+    values = c("mean_target_looks" = "#c41230", "mean_competitor_looks" = "#007bc0", 
+               "mean_dist1_looks" = "#A7A7A9", "mean_dist2_looks" = "#000000"),
+    labels = c("Target", "Competitor", "Distractor", "Distractor")
+  )
+
+combined_plot <- plot_grid(plot1, plot2, ncol = 1)+
+  draw_label("Anti-penultimate (bottom) and penultimate (top) items proportion of looks", x = 0.02, y = 0.5, angle = 90, size = 14)
+combined_plot
+
+#ggsave("../visuals/pen_vs_anti_pen.jpeg", plot = combined_plot, width = 6, height = 8, dpi = 300)
+```
+
+```{r}
+comp_targ<-s_exp1_data_all%>%filter(time_rounded>200&time_rounded<699)%>%
+  mutate(syllable=case_when(stress_play=="Penultimate" & time_rounded<penn_times[1]~1,
+                            stress_play=="Penultimate" & time_rounded>penn_times[1] &
+                              time_rounded<mean(penn_times[2],penn_times[3]) ~2,
+                            stress_play=="Penultimate" & time_rounded>penn_times[3]~3,
+                            stress_play=="Anit-penultimate" & time_rounded<anti_times[1]~1,
+                            stress_play=="Anit-penultimate" & time_rounded>anti_times[1] &
+                              time_rounded<mean(anti_times[2],anti_times[3]) ~2,
+                            stress_play=="Anit-penultimate" & time_rounded>anti_times[3]~3))
+
+
+
+
+
+```
+
+```{r}
 ets_exp1_all_agg_part<-s_exp1_data_all%>%
   group_by(stress_play,participant.private.id)%>%
   summarise(mean_target_looks=mean(target_looks),
