@@ -17,6 +17,8 @@ library(GGally)
 library(conflicted)
 library(performance)
 library(cowplot)
+library(lme4)
+library(lmerTest)
 ```
 
 ```{r}
@@ -496,7 +498,7 @@ ets_exp1_all_agg<-s_exp1_data_all%>%
   
 
 penn_times<-c(300, 500, 650)
-anti_times<-c(390, 530, 620)
+anti_times<-c(390, 530, 669)
 
 df_1 <- data.frame(
   time_rounded = penn_times,
@@ -588,44 +590,119 @@ combined_plot
 ```
 
 ```{r}
-comp_targ<-s_exp1_data_all%>%filter(time_rounded>200&time_rounded<699)%>%
-  mutate(syllable=case_when(stress_play=="Penultimate" & time_rounded<penn_times[1]~1,
-                            stress_play=="Penultimate" & time_rounded>penn_times[1] &
+comp_targ<-s_exp1_data_all%>%
+  ungroup()%>%
+  filter(time_rounded<699)%>%
+  mutate(syllable=case_when(time_rounded<200~0,
+                            stress_play=="Penultimate" & time_rounded>200 &
+                              time_rounded<penn_times[1]~1,
+                            stress_play=="Penultimate" & time_rounded>=penn_times[1] &
                               time_rounded<mean(penn_times[2],penn_times[3]) ~2,
-                            stress_play=="Penultimate" & time_rounded>penn_times[3]~3,
-                            stress_play=="Anit-penultimate" & time_rounded<anti_times[1]~1,
-                            stress_play=="Anit-penultimate" & time_rounded>anti_times[1] &
+                            stress_play=="Penultimate" & time_rounded<=penn_times[3]~3,
+                            stress_play=="Anti-penultimate" & time_rounded>200 &
+                              time_rounded<anti_times[1]~1,
+                            stress_play=="Anti-penultimate" & time_rounded>=anti_times[1] &
                               time_rounded<mean(anti_times[2],anti_times[3]) ~2,
-                            stress_play=="Anit-penultimate" & time_rounded>anti_times[3]~3))
+                            stress_play=="Anti-penultimate" & time_rounded<=anti_times[3]~3))
+
+comp_tar_longer<-comp_targ%>%
+  pivot_longer(cols=c(target_looks:dist2_looks),names_to = "names",values_to="values")%>%
+  mutate(syllable=as.factor(syllable),
+         stress_play=as.factor(stress_play))
 
 
+contrasts(comp_tar_longer$stress_play)<-c(.5,-.5)
+contrasts(comp_tar_longer$stress_play)
+comp_tar_longer$names<-as.factor(comp_tar_longer$names)
+contrasts(comp_tar_longer$names)
+#data$looks <- factor(data$looks, levels = c("dist1_looks", "dist2_looks", "target_looks", "competitor_looks"))
 
 
+contrasts(factor(comp_tar_longer$names))
+contrasts(comp_tar_longer$stress_play)
+levels(comp_tar_longer$stress_play)<-c("Anti-penultimate","Penultimate")
+levels(comp_tar_longer$stress_play)
+comp_tar_model<-glm(values~names*stress_play*syllable,data=comp_tar_longer,family = "binomial")
+comp_tar_model1<-glm(values~stress_play+names*syllable,data=comp_tar_longer,family = "binomial")
+comp_tar_model2<-glm(values~stress_play+names+syllable,data=comp_tar_longer,family = "binomial")
+summary(comp_tar_model)
+summary(comp_tar_model1)
+summary(comp_tar_model2)
 
+```
+```{r}
+
+tidy_model <- tidy(comp_tar_model, effects = "fixed")%>%
+  mutate(
+    main = case_when(
+      str_detect(term, ":") ~ 1,
+      TRUE ~ 0))%>%
+   mutate(
+    looks = case_when(
+      str_detect(term, "target") ~ "target",
+      str_detect(term, "dist1") ~ "distractor_1",
+      str_detect(term, "dist2") ~ "distractor_2",
+      TRUE ~ "Base_looks"))%>%
+  mutate(
+    syllable = case_when(
+      str_detect(term, "syllable1") ~ "1",
+      str_detect(term, "syllable2") ~ "2",
+      str_detect(term, "syllable3") ~ "3",
+      TRUE ~ "0"))%>%
+  mutate(
+      term=str_replace(term, "syllable1","Syllable 1"),
+      term=str_replace(term, "syllable2","Syllable 1.5"),
+      term=str_replace(term, "syllable3","Syllable 2"),
+      term=str_replace(term, "_looks",""),
+      term=str_replace(term, "names","Looks "),
+      term=str_replace(term, "stress_play","Stress"),
+      term=str_replace(term, "Stress1","Stress Anti"))%>%
+  arrange(main,syllable,looks)%>%
+  mutate(row_number=row_number())%>%
+  mutate(looks=as.factor(looks))
+
+colors <- c("Base_looks" = "#007bc0", "distractor_1" = "#A7A7A9", 
+            "distractor_2" = "#000000", "target" = "#c41230")
+
+pen_anti_model<-ggplot(tidy_model, aes(x = estimate, y = row_number,color=factor(looks))) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = estimate - 1.96 * std.error, xmax = estimate + 1.96 * std.error), height = 0) +
+  labs(title = , x = "Estimated Coefficients", y = "",color = "Looks to grouping") +
+  theme_minimal()+
+  geom_vline(xintercept = 0)+
+  scale_y_continuous(breaks = tidy_model$row_number, labels = tidy_model$term)+
+  scale_color_manual(
+    values = c( "Base_looks" = "#007bc0", "distractor_1" = "#A7A7A9", 
+                "distractor_2" = "#000000","target" = "#c41230"),
+    labels = c( "Base", "Distractor 1", "Distractor 2","Target")
+  )+
+  annotate("rect", xmin = -2.7, xmax = -1.45, ymin = -1.5, ymax = 32.5, fill = "white",color="grey") +
+  geom_text(aes(y = row_number,x=-1.5, label = term, color = factor(looks)),hjust = 1, size = 4,angle=40)+
+  xlim(-2.7, 1)+
+  coord_flip()+
+  theme(axis.text.y = element_text(angle = 15, hjust = 1),
+        axis.text.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        axis.title.y = element_text(hjust = .75, vjust = 0.0),
+        axis.title.x = element_text(hjust = .0, vjust = 0),
+        panel.border = element_blank(),
+        legend.position = "bottom")+
+  scale_x_continuous(breaks=seq(-1, 1, by = .5))+
+  geom_text(aes(y = 1,x=-2.5, label = "Terms"),color = "black",hjust = 1, size = 5,angle=0)
+
+#ggsave("../visuals/pen_vs_anti_pen_model.jpeg", plot = pen_anti_model, width = 10, height = 6.6, dpi = 300)
 ```
 
 ```{r}
-ets_exp1_all_agg_part<-s_exp1_data_all%>%
-  group_by(stress_play,participant.private.id)%>%
+ets_exp1_all_agg_part_wider<-comp_tar_longer%>%
+  pivot_wider(names_from = names,values_from = values)%>%
+  filter(syllable!=3)%>%
+  group_by(participant.private.id,stress_play,syllable)%>%
   summarise(mean_target_looks=mean(target_looks),
             mean_competitor_looks=mean(competitor_looks),
             mean_dist1_looks=mean(dist1_looks),
             mean_dist2_looks=mean(dist2_looks))%>%
-  ungroup()%>%
-  pivot_longer(cols=c(mean_target_looks:mean_dist2_looks),names_to = "names",values_to="values")
-  
-
-ets_exp1_all_agg_part%>%
-  ggplot(aes(x=factor(participant.private.id),y=values,color=names))+
-  geom_point()+
-  geom_smooth()+
-  facet_grid(stress_play~.)+
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
-
-```
-```{r}
-ets_exp1_all_agg_part_wider<-ets_exp1_all_agg_part%>%
-  pivot_wider(names_from = names,values_from = values)%>%
   mutate(proportion_o_looks=mean_target_looks-mean_competitor_looks)%>%
   left_join(battery_agg_wider_simp)%>%
   left_join(digit_cleaned_simp)%>%
@@ -637,9 +714,12 @@ ets_exp1_all_agg_part_wider%>%
   ggplot(aes(x=stress_play,y=proportion_o_looks,color=stress_play))+
   geom_boxplot()+
   geom_jitter()+
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))+
+  facet_wrap(.~syllable)
+
 full_data_exp1<-ets_exp1_all_agg_part_wider%>%select(!c(participant.private.id,c_battery_up_dur:c_battery_up_risetime,mean_target_looks:mean_dist2_looks))
 ggpairs(full_data_exp1)
+
 ```
 
 ```{r message=FALSE, warning=FALSE, paged.print=FALSE}
@@ -662,7 +742,7 @@ predictors <- setdiff(names(full_data_exp1), c("proportion_o_looks", force_var))
 formula_interactions <- as.formula(paste("proportion_o_looks ~ stress_play + (", force_var, "+", paste(predictors, collapse = "+"), ")^2"))
 formula_interactions
 
-subset_fit <- regsubsets(formula_interactions, data = full_data_exp1, nbest = 1, nvmax = 10, force.in = force_in_vector)
+subset_fit <- regsubsets(formula_interactions, data = full_data_exp1, nbest = 1, nvmax = 10, force.in = force_in_vector,really.big=T)
 
 # Perform subset selection allowing other variables to vary
 subset_fit <- regsubsets(formula_interactions, data = full_data_exp1, nbest = 1, nvmax = 10)
@@ -732,7 +812,6 @@ ggplot(coef_df, aes(x = Predictor, y = Estimate, ymin = CI_Lower, ymax = CI_Uppe
 
 
 ```{r}
-
 s_exp2_cleaned<-s_exp2%>%
   select(participant.private.id,spreadsheet.row,randomise_trials,display,randomise_trials,response,reaction.time,
          zone.type,display,q1,q2,q3,q4,target,competitor,distractor,distractor_1,audio)%>%
