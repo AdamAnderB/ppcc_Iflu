@@ -56,8 +56,12 @@ battery <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
 pattern="rsao"
 lextale <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
 
+pattern="m24c"
+italian_lextale <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+
 pattern="3nvp"
 autism <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+
 
 removal <- data.frame(task = character(), 
                       value = numeric(), 
@@ -271,15 +275,61 @@ removal[nrow(removal) + 1, ] <- c("lextale_agg_participant",
 lextale_agg_cleaned_simp<-lextale_agg_cleaned%>%select(lextale_score,participant.private.id)
 ```
 ```{r}
+
+italian_lextale_tidy<-italian_lextale%>%
+  select(participant.private.id,screen.name,zone.type,reaction.time,correct)%>%
+  filter(zone.type=="response_keyboard")%>%
+  filter(reaction.time>250)
+
+italian_lextale_tidy%>%ggplot(aes(x=reaction.time))+geom_histogram()
+
+italian_lextale_agg<-italian_lextale_tidy%>%
+  group_by(participant.private.id)%>%
+  summarize(italian_lextale_score=mean(correct))
+
+italian_lextale_agg_cleaned<-italian_lextale_agg%>%
+  ungroup()%>%
+  mutate(medians = median(italian_lextale_score),
+         abs_distance = abs(medians-italian_lextale_score),
+         mean_distance = mean(abs_distance),
+         upper_mad = medians+(mean_distance*mad_standard),
+         lower_mad = medians-(mean_distance*mad_standard))%>%
+  filter(italian_lextale_score<upper_mad &italian_lextale_score>lower_mad)
+
+
+italian_lextale_agg_cleaned%>%ggplot(aes(x=italian_lextale_score))+
+  geom_histogram()
+
+
+removal[nrow(removal) + 1, ] <- c("italian_lextale_agg_participant", 
+                                  nrow(italian_lextale_agg) - nrow(italian_lextale_agg_cleaned))
+
+italian_lextale_agg_cleaned_simp<-italian_lextale_agg_cleaned%>%select(italian_lextale_score,participant.private.id)
+```
+
+```{r}
 autism_tidy<-autism%>%
   select(participant.private.id,question.key,response)%>%
   filter(str_detect(question.key, "quantised"))%>%
-  mutate(response=as.numeric(response),
-         participant.private.id=as.factor(participant.private.id))
-View(autism)
+  mutate(response=as.numeric(response))
+
+
+agree<-c(1, 2, 4, 5, 6, 7, 9, 12, 13, 16, 18, 19, 20, 21, 
+         22, 23, 26, 33, 35, 39, 41,42, 43, 45, 46)
+disagree<-c(3, 8, 10, 11, 14, 15, 17, 24, 25, 27, 28, 29, 
+            30, 31, 32,34, 36, 37, 38, 40, 44, 47, 48, 49, 50)
+agr_key<-c("1","2")
+dis_key<-c("3","4")
+
 autism_cleaned<-autism_tidy%>%
-  group_by(factor(participant.private.id))%>%
-  summarize(autism_score=mean(response))
+  mutate(key_response = str_replace_all(question.key, "AQ", ""))%>%
+  mutate(key_response = str_replace_all(key_response, "-quantised", ""))%>%
+  mutate(points=case_when(key_response%in%agree & response %in% agr_key~1,
+                          key_response%in%agree & response %in% dis_key~0,
+                          key_response%in%disagree & response %in% dis_key~1,
+                          key_response%in%disagree & response %in% agr_key~0))%>%
+  group_by(participant.private.id)%>%
+  summarize(autism_score=mean(points))
 
 autism_cleaned%>%ggplot(aes(x=autism_score))+geom_histogram()
 ```
@@ -288,17 +338,46 @@ autism_cleaned%>%ggplot(aes(x=autism_score))+geom_histogram()
 s_exp1_cleaned<-s_exp1%>%
   select(participant.private.id,spreadsheet.row,response,real_1_distractor_0,zone.type,display,audio,
          q1_image,q2_image,q3_image,q4_image,
-         id,grouping_id,sorting,target,competitor,dist_1,dist_2,real_1_distractor_0,
-         target_quantile,competitor_quantile,dist1_quantile,dist2_quantile,q1,q2,q3,q4,audio)%>%
+         id,grouping_id,sorting,audio)%>%
   filter(zone.type=="response_button_image")%>%
   mutate(audio=tolower(audio),
          word_play = str_remove(str_extract(audio, "^[^_]+"), "\\.wav"),
+         word_play_start = substr(word_play, 1, 3),
          stress_play = str_remove(str_extract(audio, "(?<=_)[^_]+"), "\\.wav"),
          response_word = str_extract(response, "(?<=\\d)[a-zA-Z]+(?=\\.jpeg)"),
          response_thing = str_extract(response, "(?<=\\D)\\d{2}(?=[a-zA-Z]+\\.jpeg)"),
          correct=if_else(response_word==word_play,1,0))%>%
-  mutate(stress_play=if_else(stress_play=="p","Penultimate","Anti-penultimate"))
+  mutate(stress_play=if_else(stress_play=="p","Penultimate","Anti-penultimate"),
+         q1_word= str_extract(q1_image, "(?<=\\d)[a-zA-Z]+(?=\\.jpeg)"),
+         q2_word= str_extract(q2_image, "(?<=\\d)[a-zA-Z]+(?=\\.jpeg)"),
+         q3_word= str_extract(q3_image, "(?<=\\d)[a-zA-Z]+(?=\\.jpeg)"),
+         q4_word= str_extract(q4_image, "(?<=\\d)[a-zA-Z]+(?=\\.jpeg)"))%>%
+ mutate(target_quantile=case_when(q1_word==word_play~1,
+                                 q2_word==word_play~2,
+                                 q3_word==word_play~3,
+                                 q4_word==word_play~4),
+       competitor_quantile = case_when(
+      q1_word != word_play & str_detect(q1_word,word_play_start) ~ 1,
+      q2_word != word_play & str_detect(q2_word,word_play_start) ~ 2,
+      q3_word != word_play & str_detect(q3_word,word_play_start) ~ 3,
+      q4_word != word_play & str_detect(q4_word,word_play_start) ~ 4))%>%
+  rowwise() %>%
+  mutate(distractor_1_quantile = {
+    possible_values <- setdiff(1:4, c(target_quantile, competitor_quantile))
+    sample(possible_values, 1)
+  })%>%
+  mutate(distractor_2_quantile = 10-sum(distractor_1_quantile,target_quantile,competitor_quantile))
 
+s_exp1_cleaned<-s_exp1_cleaned%>%
+  mutate(target = case_when(target_quantile == 1 ~ q1_word,
+                            target_quantile == 2 ~ q2_word,
+                            target_quantile == 3 ~ q3_word,
+                            target_quantile == 4 ~ q4_word))
+g<-4
+g
+```
+
+```{r}
 item_agg<-s_exp1_cleaned%>%group_by(word_play)%>%
   summarise(score=mean(correct))%>%
   ungroup()%>%
@@ -343,15 +422,19 @@ part_agg_keep<-part_agg%>%
 removal[nrow(removal) + 1, ] <- c("exp1_part_removed", 
                                   length(unique(part_agg$participant.private.id)) - length(unique(part_agg_keep$participant.private.id)))
 
-s_exp1_cleaned<-s_exp1_cleaned%>%filter(participant.private.id%in%part_agg_keep$participant.private.id)
-s_exp1_cleaned<-s_exp1_cleaned%>%filter(word_play%in%item_agg_keep$word_play)
+#s_exp1_cleaned<-s_exp1_cleaned%>%filter(participant.private.id%in%part_agg_keep$participant.private.id)
+#s_exp1_cleaned<-s_exp1_cleaned%>%filter(word_play%in%item_agg_keep$word_play)
 
 length(unique(s_exp1_cleaned$participant.private.id))
 length(unique(s_exp1_cleaned$word_play))
 
+list_o_word<-c('canapa','candido','celebre','codice','comico','eremo','estero','federa','forbice','fragola','impeto','lattice','loculo','macabro','mastice','missile','monito','panico','protesi','remora','salice','senape','tonaca','zigomo','canale','candito','celeste','codino','comizio','erede','esteta','fedele','forbito','fragore','impero','lattina','locusta','macaco','mastino','missiva','monile','panino','protesta','remoto','saliva','senato','tonale','zigote')
+
 s_exp1_cleaned<-s_exp1_cleaned%>%
   filter(correct==1)%>%
-  filter(real_1_distractor_0==1)
+  filter(word_play%in%list_o_word)
+
+prac<-s_exp1_cleaned%>%ungroup()%>%group_by(real_1_distractor_0,stress_play,word_play)%>%count()
 ```
 
 ```{r}
@@ -385,8 +468,10 @@ s_exp1_data_all <- s_exp1_et_cleaned %>%
   mutate(time=time_stamp-min(time_stamp),
          time_rounded = round(time / 50) * 50)%>%
   mutate(time_rounded=time_rounded-1000)%>%
-  filter(time_rounded<1500&time_rounded>0)
-  
+  mutate(time_rounded=time_rounded-200)%>%
+  filter(time_rounded<1000&time_rounded>0)
+
+View(s_exp1_data_all)  
 ets_exp1_all_agg<-s_exp1_data_all%>%
   group_by(stress_play,time_rounded)%>%
   summarise(mean_target_looks=mean(target_looks),
@@ -427,8 +512,9 @@ ets_exp1_all_agg_part_wider<-ets_exp1_all_agg_part%>%
   mutate(proportion_o_looks=mean_target_looks-mean_competitor_looks)%>%
   left_join(battery_agg_wider_simp)%>%
   left_join(digit_cleaned_simp)%>%
-  left_join(lextale_agg_cleaned_simp)
-
+  left_join(lextale_agg_cleaned_simp)%>%
+  left_join(italian_lextale_agg_cleaned_simp)%>%
+  left_join(autism_cleaned)
 
 ets_exp1_all_agg_part_wider%>%
   ggplot(aes(x=stress_play,y=proportion_o_looks,color=stress_play))+
@@ -438,17 +524,17 @@ ets_exp1_all_agg_part_wider%>%
 full_data_exp1<-ets_exp1_all_agg_part_wider%>%select(!c(participant.private.id,c_battery_up_dur:c_battery_up_risetime,mean_target_looks:mean_dist2_looks))
 ggpairs(full_data_exp1)
 ```
-```{r}
-installed.packages("leaps")
-installed.packages("MASS")
-installed.packages("caret")
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#installed.packages("leaps")
+#installed.packages("MASS")
+#installed.packages("caret")
 library(MASS) 
 library(caret)
 library(leaps)
 
 # Ensure 'stress_play' is always included in the model
 force_var <- "stress_play"
-force_in_vector
 force_in_vector <- rep(FALSE, 28)  # Assuming 28 variables as in your output
 names(force_in_vector) <- colnames(full_data_exp1)  # Make sure this matches your data structure
 force_in_vector["stress_play"] <- TRUE
@@ -506,6 +592,7 @@ check_model(m1)
 check_model(model_lm)
 ```
 ```{r}
+
 coef_df <- summary(model_lm)$coefficients
 
 coef_df <- as.data.frame(coef_df)
@@ -598,7 +685,15 @@ s_exp2_agg%>%ggplot(aes(x=factor(randomise_trials),y=score,color=factor(stress_a
 s_exp2_agg2<-s_exp2_cleaned%>%
   group_by(participant.private.id,randomise_trials)%>%
   summarize(score=mean(correct))
- 
+
+s_exp2_agg_means<-s_exp2_agg2%>%
+  ungroup()%>%
+  group_by(randomise_trials)%>%
+  summarize(mean=mean(score),
+            sd=sd(score))
+
+
+View(s_exp2_agg_means)
 s_exp2_agg2%>%ggplot(aes(x=factor(randomise_trials),y=score,color=factor(randomise_trials)))+
   geom_boxplot()+
   geom_jitter()+
@@ -691,7 +786,9 @@ ets_exp2_all_agg_part_wider<-ets_exp2_all_agg_part%>%
   mutate(proportion_o_looks=mean_target_looks-mean_competitor_looks)%>%
   left_join(battery_agg_wider_simp)%>%
   left_join(digit_cleaned_simp)%>%
-  left_join(lextale_agg_cleaned_simp)
+  left_join(lextale_agg_cleaned_simp)%>%
+  left_join(italian_lextale_agg_cleaned_simp)%>%
+  left_join(autism_cleaned)
 
 
 ets_exp2_all_agg_part_wider%>%
@@ -707,7 +804,7 @@ full_data_exp2$randomise_trials<-as.factor(full_data_exp2$randomise_trials)
 ggpairs(full_data_exp2)
 ```
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 force_var <- "stress_audio"
 force_in_vector
 force_in_vector <- rep(FALSE,28)  # Assuming 28 variables as in your output
@@ -737,11 +834,6 @@ subset_summary$which[selected_model, ]
 # Cross-validation to check model performance
 fit_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
 fit_control
-# Ensure 'stress_play' is included in the cross-validation model formula
-model_formula <- as.formula(paste("proportion_o_looks ~", force_var, "+", paste(names(full_data_exp1)[subset_summary$which[selected_model,]], collapse = "+")))
-model_cv <- train(model_formula, data = full_data_exp1, method = "lm", trControl = fit_control)
-print(model_cv)
-
 ```
 
 ```{r}
@@ -751,34 +843,37 @@ formula_str <- "proportion_o_looks ~"
 formula_str <- paste(formula_str, paste(included_predictors, collapse = " + "), sep = "")
 formula_str
 
-formula_str <- gsub("Penultimate", "", formula_str, perl = TRUE)
+formula_str <- gsub("penultimate", "", formula_str, perl = TRUE)
+formula_str <- gsub("13", "", formula_str, perl = TRUE)
+formula_str <- gsub("11", "", formula_str, perl = TRUE)
+formula_str <- gsub("7", "", formula_str, perl = TRUE)
 model_formula <- as.formula(formula_str)
-model_lm <- lm(model_formula, data = ets_exp2_all_agg_part_wider)
+model_lm2 <- lm(model_formula, data = ets_exp2_all_agg_part_wider)
 
 # Display the summary of the model
-summary(model_lm)
+summary(model_lm2)
 
 check_model(m1)
 check_model(model_lm)
 ```
 
 ```{r}
-m1<-lm(proportion_o_looks~(.)^2,data=full_data_exp2)
-summary(m1)
+coef_df2 <- summary(model_lm2)$coefficients
 
-included_predictors <- names(subset_summary$which[selected_model, ][subset_summary$which[selected_model, ] & names(subset_summary$which[selected_model, ]) != "(Intercept)"])
+coef_df2 <- as.data.frame(coef_df2)
+coef_df2$Predictor <- rownames(coef_df2)
+rownames(coef_df2) <- NULL
 
-formula_str <- "proportion_o_looks ~"
-formula_str <- paste(formula_str, paste(included_predictors, collapse = " + "), sep = "")
-formula_str
+ci_level <- 1.96
+coef_df2$CI_Lower <- coef_df2$Estimate - ci_level * coef_df2$`Std. Error`
+coef_df2$CI_Upper <- coef_df2$Estimate + ci_level * coef_df2$`Std. Error`
 
-formula_str <- gsub("Penultimate", "", formula_str, perl = TRUE)
-model_formula <- as.formula(formula_str)
-model_lm <- lm(model_formula, data = full_data_exp2)
 
-# Display the summary of the model
-summary(model_lm)
-
-check_model(m1)
-check_model(model_lm)
+ggplot(coef_df2, aes(x = Predictor, y = Estimate, ymin = CI_Lower, ymax = CI_Upper)) +
+  geom_pointrange() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Effect Sizes and Confidence Intervals for Model Coefficients",
+       x = "Predictors",
+       y = "Estimate") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+coord_flip()+theme_bw()
 ```
