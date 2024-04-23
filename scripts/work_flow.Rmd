@@ -19,6 +19,9 @@ library(performance)
 library(cowplot)
 library(lme4)
 library(lmerTest)
+library(MASS) 
+library(caret)
+library(leaps)
 ```
 
 ```{r}
@@ -498,18 +501,18 @@ ets_exp1_all_agg<-s_exp1_data_all%>%
   
 
 penn_times<-c(300, 500, 650)
-anti_times<-c(390, 530, 669)
+anti_times<-c(390, 530, 625)
 
 df_1 <- data.frame(
   time_rounded = penn_times,
   values = 0.6,
-  labels = c("ca", "NA", "le")
+  labels = c("ca", "LA", "ta")
 )
 
 df_2 <- data.frame(
   time_rounded = anti_times,
   values = 0.6,
-  labels = c("CA", "na", "pa")
+  labels = c("CA", "la", "mo")
 )
 
 plot1<-ets_exp1_all_agg %>%
@@ -590,6 +593,10 @@ combined_plot
 ```
 
 ```{r}
+
+penn_times<-c(396, 566,699)
+anti_times<-c(499, 566,669)
+
 comp_targ<-s_exp1_data_all%>%
   ungroup()%>%
   filter(time_rounded<699)%>%
@@ -718,6 +725,7 @@ pen_anti_model
 #ggsave("../visuals/pen_vs_anti_pen_model.jpeg", plot = pen_anti_model, width = 10, height = 6.6, dpi = 300)
 ```
 
+
 ```{r message=FALSE, warning=FALSE, paged.print=FALSE}
 library(conflicted)
 ets_exp1_all_agg_part_wider<-comp_tar_longer%>%
@@ -735,6 +743,13 @@ ets_exp1_all_agg_part_wider<-comp_tar_longer%>%
   left_join(italian_lextale_agg_cleaned_simp)%>%
   left_join(autism_cleaned)
 
+#write.csv(ets_exp1_all_agg_part_wider, "../../ppcc_iflu_data/ets_exp1_all_agg_part_wider.csv")
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(conflicted)
+ets_exp1_all_agg_part_wider<-read.csv("../../ppcc_iflu_data/ets_exp1_all_agg_part_wider.csv")
+
 ets_exp1_all_agg_part_wider%>%
   ggplot(aes(x=stress_play,y=proportion_o_looks,color=stress_play))+
   geom_boxplot()+
@@ -743,37 +758,43 @@ ets_exp1_all_agg_part_wider%>%
   facet_wrap(.~syllable)
 
 full_data_exp1<-ets_exp1_all_agg_part_wider%>%select(!c(participant.private.id,c_battery_up_dur:c_battery_up_risetime,mean_target_looks:mean_dist2_looks))
-ggpairs(full_data_exp1)
+#ggpairs(full_data_exp1)
 
+full_data_exp1$stress_play<-as.factor(full_data_exp1$stress_play)
 contrasts(full_data_exp1$stress_play)
-contrasts(comp_tar_longer$stress_play)<-c(.5,-.5)
-View(full_data_exp1)
-```
+contrasts(full_data_exp1$stress_play)<-c(.5,-.5)
 
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+full_data_exp1 <- full_data_exp1 %>%
+  select(-X) %>%
+  select(proportion_o_looks, everything()) %>%
+  mutate(across(dprime_battery_up_dur:autism_score, ~ scale(.)[, 1]))
+```
+```{r}
 #installed.packages("leaps")
 #installed.packages("MASS")
 #installed.packages("caret")
-library(MASS) 
-library(caret)
-library(leaps)
+#library(MASS) 
+#library(caret)
+#library(leaps)
 
 # Ensure 'stress_play' is always included in the model
 force_var <- "stress_play"
-force_in_vector <- rep(FALSE, 28)  # Assuming 28 variables as in your output
+ncol(full_data_exp1)
+force_in_vector <- rep(FALSE,ncol(full_data_exp1))  # Assuming 28 variables as in your output
 names(force_in_vector) <- colnames(full_data_exp1)  # Make sure this matches your data structure
+names(force_in_vector)
 force_in_vector["stress_play"] <- TRUE
+force_in_vector
 # Exclude the response and the forced variable from the predictors
 predictors <- setdiff(names(full_data_exp1), c("proportion_o_looks", force_var))
-
+predictors
 # Create the formula ensuring 'stress_play' is always included
 formula_interactions <- as.formula(paste("proportion_o_looks ~ (", force_var, "+", paste(predictors, collapse = "+"), ")^2"))
 formula_interactions
 
-#subset_fit <- regsubsets(formula_interactions, data = full_data_exp1, nbest = 1, nvmax = 10, force.in = force_in_vector,really.big=T)
+subset_fit <- leaps::regsubsets(formula_interactions, data = full_data_exp1, nbest = 1, nvmax = 10, force.in = force_in_vector,really.big=T)
 
 # Perform subset selection allowing other variables to vary
-subset_fit <- leaps::regsubsets(formula_interactions, data = full_data_exp1, nbest = 1, nvmax = 10,really.big=T)
 subset_summary <- summary(subset_fit)
 subset_summary
 
@@ -785,14 +806,9 @@ subset_summary$bic
 # Choose a model based on BIC
 selected_model <- which.min(subset_summary$bic)
 subset_summary$which[selected_model, ]
-
-# Cross-validation to check model performance
-fit_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
-fit_control
 ```
 
 ```{r}
-
 m1<-lm(proportion_o_looks~(.)^2,data=full_data_exp1)
 summary(m1)
 
@@ -803,16 +819,17 @@ formula_str <- paste(formula_str, paste(included_predictors, collapse = " + "), 
 formula_str
 
 formula_str <- gsub("Penultimate", "", formula_str, perl = TRUE)
+formula_str <- gsub("1", "", formula_str, perl = TRUE)
 model_formula <- as.formula(formula_str)
-model_lm <- lm(model_formula, data = ets_exp1_all_agg_part_wider)
 
+model_lm <- lm(model_formula, data = ets_exp1_all_agg_part_wider)
+model_lm
 # Display the summary of the model
 summary(model_lm)
-
 check_model(m1)
 check_model(model_lm)
 ```
-```{r}
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
 
 coef_df <- summary(model_lm)$coefficients
 
@@ -824,7 +841,6 @@ ci_level <- 1.96
 coef_df$CI_Lower <- coef_df$Estimate - ci_level * coef_df$`Std. Error`
 coef_df$CI_Upper <- coef_df$Estimate + ci_level * coef_df$`Std. Error`
 
-View(coef_df)
 ggplot(coef_df, aes(x = Predictor, y = Estimate, ymin = CI_Lower, ymax = CI_Upper)) +
   geom_pointrange() +
   geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
@@ -833,6 +849,140 @@ ggplot(coef_df, aes(x = Predictor, y = Estimate, ymin = CI_Lower, ymax = CI_Uppe
        y = "Estimate") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))+coord_flip()+theme_bw()
 ```
+#target analysis
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+full_data_exp2<-ets_exp1_all_agg_part_wider%>%
+  select(!c(participant.private.id,c_battery_up_dur:c_battery_up_risetime,mean_competitor_looks:mean_dist2_looks,proportion_o_looks))%>%
+  na.omit()%>%
+  select(-X)
+
+
+ggpairs(full_data_exp1)
+full_data_exp2$stress_play<-as.factor(full_data_exp2$stress_play)
+contrasts(full_data_exp2$stress_play)
+contrasts(full_data_exp2$stress_play)<-c(.5,-.5)
+full_data_exp2$syllable
+
+full_data_exp2 <- full_data_exp2 %>%
+  select(mean_target_looks, everything())%>%
+  ungroup()%>%
+  mutate(across(dprime_battery_up_dur:autism_score, ~ scale(.)[, 1]))
+```
+
+```{r}
+#installed.packages("leaps")
+#installed.packages("MASS")
+#installed.packages("caret")
+#library(MASS) 
+#library(caret)
+#library(leaps)
+
+# Ensure 'stress_play' is always included in the model
+force_var2 <- "stress_play"
+ncol(full_data_exp2)
+force_in_vector2 <- rep(FALSE,ncol(full_data_exp2))  # Assuming 28 variables as in your output
+names(force_in_vector2) <- colnames(full_data_exp2)  # Make sure this matches your data structure
+names(force_in_vector2)
+force_in_vector2["stress_play"] <- TRUE
+force_in_vector2
+# Exclude the response and the forced variable from the predictors
+predictors2 <- setdiff(names(full_data_exp2), c("mean_target_looks", force_var2))
+predictors2
+# Create the formula ensuring 'stress_play' is always included
+formula_interactions2 <- as.formula(paste("mean_target_looks ~ (", force_var2, "+", paste(predictors2, collapse = "+"), ")^2"))
+formula_interactions2
+
+subset_fit2 <- leaps::regsubsets(formula_interactions2, data = full_data_exp2, nbest = 1, nvmax = 10, force.in = force_in_vector2,really.big=T)
+
+# Perform subset selection allowing other variables to vary
+subset_summary2 <- summary(subset_fit2)
+subset_summary2
+
+# Print summary statistics
+subset_summary2$adjr2
+subset_summary2$cp
+subset_summary2$bic
+
+# Choose a model based on BIC
+selected_model2 <- which.min(subset_summary2$bic)
+subset_summary2$which[selected_model2, ]
+
+m1.2<-lm(mean_target_looks~(.)^2,data=full_data_exp2)
+summary(m1.2)
+
+included_predictors2 <- names(subset_summary2$which[selected_model2, ][subset_summary2$which[selected_model2, ] & names(subset_summary2$which[selected_model2, ]) != "(Intercept)"])
+
+formula_str2 <- "mean_target_looks ~"
+formula_str2 <- paste(formula_str2, paste(included_predictors2, collapse = " + "), sep = "")
+formula_str2
+
+formula_str2 <- gsub("Penultimate", "", formula_str2, perl = TRUE)
+formula_str2 <- gsub("1", "", formula_str2, perl = TRUE)
+formula_str2 <- gsub("2", "", formula_str2, perl = TRUE)
+model_formula2 <- as.formula(formula_str2)
+
+model_lm2 <- lm(model_formula2, data = ets_exp1_all_agg_part_wider)
+model_lm2
+# Display the summary of the model
+summary(model_lm2)
+check_model(m1.2)
+check_model(model_lm2)
+```
+
+
+```{r}
+coef_df2 <- summary(model_lm2)$coefficients
+summary(model_lm2)
+coef_df2 <- as.data.frame(coef_df2)
+coef_df2$Predictor <- rownames(coef_df2)
+rownames(coef_df2) <- NULL
+
+ci_level <- 1.96
+coef_df2$CI_Lower <- coef_df2$Estimate - ci_level * coef_df2$`Std. Error`
+coef_df2$CI_Upper <- coef_df2$Estimate + ci_level * coef_df2$`Std. Error`
+
+ggplot(coef_df2, aes(x = Predictor, y = Estimate, ymin = CI_Lower, ymax = CI_Upper)) +
+  geom_pointrange() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Effect Sizes and Confidence Intervals for Model Coefficients",
+       x = "Predictors",
+       y = "Estimate") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+coord_flip()+theme_bw()
+
+coef_df$model<-"competition"
+coef_df2$model<-"target looks"
+```
+
+```{r}
+combined_df <- bind_rows(coef_df, coef_df2)
+
+# Plot
+ggplot(combined_df, aes(x = Predictor, y = Estimate, ymin = CI_Lower, ymax = CI_Upper, color = model)) +
+  geom_pointrange(position = position_dodge(width = 0.2)) +  # Adjust 'width' to change the dodge amount
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Predictor", y = "Estimate", title = "Comparison of Coefficient Estimates with Confidence Intervals") +
+  scale_color_manual(values = c("competition" = "blue", "target looks" = "red"))+coord_flip()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ```{r}
