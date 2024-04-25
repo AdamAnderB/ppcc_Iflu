@@ -1,0 +1,159 @@
+---
+title: "praat_textgrid_to_csv"
+author: "Adam A. Bramlett"
+date: "2023-11-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(xml2)
+library(dplyr)
+library(readr)
+library(tidyr)
+library(tidyverse)
+```
+
+
+```{r}
+#this is the name after user we used last week
+#if you do not know then use the function on the next line by removing the #
+#getwd()
+your_name<-"adambramlett"
+dir<-file.path("/Users",your_name,"scripts/music_project_23/ppcc_iflu_data/Exp1/AllSentences/")
+dir
+list.files(dir)
+tgs<-list.files(dir,pattern = ".TextGrid",full.names = TRUE)
+#if this next line comes up as (0)characters then your name is wrong
+#tgs
+dum<-read.csv(tgs[1],sep = "")
+cols<-ncol(dum)+1
+#cols
+
+#pull data
+data <- data.frame(matrix(ncol = cols, nrow = 0))
+for (files in 1:length(tgs)){
+  dum<-read.csv(tgs[files],sep = "")
+  dum$name<-tgs[files]
+  data<-rbind(data,dum)
+} 
+
+#clean data
+data_c<-data%>%
+  mutate(file_name_ext=str_split(data$name,"/(?=[^/]+$)",simplify = T)[, 2])
+
+data_c1<-data_c%>%
+  mutate(file_name=str_split(data_c$file_name_ext,pattern = "[.]",simplify = T)[, 1],
+         textgrid = ooTextFile)%>%
+  select(!c(name,file_name_ext,ooTextFile))%>%
+  mutate(tier = if_else(File == "item",type,""))
+
+data_c1$tier<-str_replace_all(data_c1$tier,"\\[|\\]|\\:","")
+
+
+#####Ding's solution - empty doesnt mean ""
+# you may need to replace if_else() with ifelse()
+data_c1<-data_c1%>%
+  mutate(tier = if_else(textgrid == "TextGrid","0",tier))%>%
+  mutate(tier = if_else(tier == "",NA,tier),
+         textgrid = if_else(tier == "",NA,textgrid))%>%
+  fill(tier,.direction="down")%>%
+  fill(textgrid,.direction="down")%>%
+  filter(textgrid != "TextGrid",
+         File != "item")%>%
+  select(!c(textgrid))%>%
+  mutate(transcribe_point = if_else(X. == "IntervalTier","0",if_else(File == "intervals",type,NA)))
+
+data_c1$transcribe_point<-str_replace_all(data_c1$transcribe_point,"\\[|\\]|\\:","")
+
+
+data_c1_wider<-data_c1%>%
+  fill(transcribe_point,.direction="down")%>%
+  filter(File == "xmin"|File == "xmax"|File == "text")%>%
+  mutate(transcribed_info = if_else(File == "text",X.,NA))%>%
+  fill(transcribed_info,.direction = "up")%>%
+  filter(File != "text")%>%
+  filter(transcribed_info != "")%>%
+  select(!type)%>%
+  pivot_wider(names_from = File,values_from=X.)
+
+#View(data_c1_wider)
+#write.csv(data_c1_wider,file.path(dir,"text_grid_info.csv"))
+```
+
+```{r}
+data_c1_wide_wide<-data_c1_wider%>%
+  select(-transcribe_point)%>%
+  pivot_wider(
+    names_from = transcribed_info,
+    values_from = c(xmin, xmax),
+    names_sep = "_")
+
+
+
+View(data_c1_wide_wide)
+View(data_c1)
+agg<-data_c1_wider%>%group_by(file_name)%>%count()
+head(data_c1_wider)
+```
+
+```{r}
+#check to see if all files are there
+dir<-file.path("/Users",your_name,"scripts/music_project_23/ppcc_iflu_data/Exp1/AllSentences/")
+dir
+list.files(dir)
+tgs2<-list.files(dir,pattern = ".wav")
+#if this next line comes up as (0)characters then your name is wrong
+#cols
+
+#pull data
+datas <- data.frame(tgs2)
+
+
+datas<-datas%>%
+  mutate(file_name = str_replace_all(tgs2, ".wav", ""))
+
+all_data<-datas%>%left_join(data_c1_wide_wide)
+
+```
+
+```{r}
+library(readr)
+library(dplyr)
+library(purrr)
+
+your_name<-"adambramlett"
+csv_dir<-file.path("/Users",your_name,"scripts/music_project_23/ppcc_iflu_data/Exp1/csvs/")
+list.files(csv_dir)
+
+file_names <- list.files(path = csv_dir, pattern = "\\.csv$", full.names = TRUE)
+
+list<-list.files(path = csv_dir, pattern = "\\.csv$", full.names = TRUE)
+
+dum<-read.csv(list[1],sep = "")
+cols<-ncol(dum)+1
+
+# Function to read each file and add a column with the file name
+data <- data.frame(matrix(ncol = cols, nrow = 0))
+for (files in 1:length(list)){
+  dum<-read.csv(list[files],sep = "")
+  dum$name<-list[files]
+  data<-rbind(data,dum)
+} 
+
+data_full<-data%>%
+  mutate(file_name = str_replace_all(name, csv_dir, ""))%>%
+  mutate(file_name = str_replace_all(file_name, "/", ""))%>%
+  mutate(file_name = str_replace_all(file_name, ".wav", ""))%>%
+  mutate(file_name = str_replace_all(file_name, ".csv", ""))%>%
+  select(-name)%>%
+  left_join(data_c1_wide_wide)
+
+
+data_full_clean<-data_full%>%
+  filter(time>xmin_v1 & time<xmax_v1|time>xmin_v2 & time<xmax_v2)%>%
+  filter(pitch!=0)
+View(data_full_clean)
+```
+
+
