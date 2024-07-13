@@ -1,6 +1,6 @@
 ---
 title: "praat_textgrid_to_csv"
-author: "Adam A. Bramlett"
+author: "blind"
 date: "2023-11-08"
 output: html_document
 ---
