@@ -105,4 +105,43 @@ if (!dir.exists(full_path)) {
 
 walk2(names(list_of_gorilla_dfs), list_of_gorilla_dfs, ~write.csv(.y, file = file.path(full_path, paste0(.x, ".csv")), row.names = FALSE))
 ```
+```{r}
+library(ggplot2)
+library(showtext)
 
+# Initialize showtext to load fonts
+showtext_auto(enable = TRUE)
+
+font_add_google("Noto Sans SC", "noto")
+showtext_auto()
+
+# Generate data
+set.seed(123)  # For reproducibility
+n <- 10000  # Number of observations
+hard_work <- runif(n, 1, 10)  # Random values representing hard work
+quality_life <- runif(n, 1, 10)  # Random values representing quality of life
+success <- hard_work * 0.5 + quality_life * 0.5 + rnorm(n, mean=0, sd=1.5)  # Some random noise
+
+data <- data.frame(hard_work, quality_life, success)
+
+
+
+# Create the plot
+p <- ggplot(data, aes(x=quality_life, y=success, color=hard_work,alpha=.00001)) +
+  geom_point(aes(shape=factor(quality_life)),size=quality_life) +
+  scale_color_gradient(low="blue", high="red") +
+  labs(title="成功与努力和生活质量的关系",
+       x="生活质量", y="成功", color="努力", size="努力") +
+  theme_minimal()
+
+# Print the plot
+p
+
+
+
+
+
+
+
+
+```

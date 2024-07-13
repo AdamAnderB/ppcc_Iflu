@@ -1,0 +1,531 @@
+---
+title: "left_over_code"
+author: "Adam A. Bramlett"
+date: "2024-07-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#fixations their original analysis but we changed to updated modeling approach
+```{r}
+ets_exp1_all_agg_part_wider_word<-comp_tar_longer%>%
+  pivot_wider(names_from = names,values_from = values)%>%
+  filter(syllable!=2)%>%
+  group_by(target,stress_play,syllable)%>%
+  summarise(mean_target_looks=mean(target_looks),
+            mean_competitor_looks=mean(competitor_looks),
+            mean_dist1_looks=mean(dist1_looks),
+            mean_dist2_looks=mean(dist2_looks))%>%
+  mutate(proportion_o_looks=mean_target_looks-mean_competitor_looks)%>%
+  filter(syllable!=0)%>%
+  mutate(word=target)%>%
+  left_join(acoustic_data)%>%
+  mutate(stressed=case_when(stress_play=="Penultimate"&syllable==3~"stressed",
+                           stress_play=="Penultimate"&syllable==1~"unstressed",
+                           stress_play=="Anti-penultimate"&syllable==1~"stressed",
+                           stress_play=="Anti-penultimate"&syllable==3~"unstressed"))%>%
+  select(target,stress_play,syllable,stressed,proportion_o_looks,mean_target_looks,mean_pitch,mean_amplitude,duration,mean_tilt,mean_competitor_looks)
+
+df_syllable_1 <- ets_exp1_all_agg_part_wider_word %>% filter(syllable == 1)
+df_syllable_3 <- ets_exp1_all_agg_part_wider_word %>% filter(syllable == 3)
+
+colnames(df_syllable_1) <- paste0(colnames(df_syllable_1), "_1")
+colnames(df_syllable_3) <- paste0(colnames(df_syllable_3), "_3")
+
+# Join the two dataframes on target
+df_joined <- inner_join(df_syllable_1, df_syllable_3, by = c("target_1" = "target_3"))
+
+# Calculate differences
+result <- df_joined %>%
+  mutate(
+    mean_target_looks_diff = case_when(
+      stress_play_1 == "Penultimate" ~ mean_target_looks_3 - mean_target_looks_1,
+      stress_play_1 != "Penultimate" ~ mean_target_looks_1 - mean_target_looks_3
+    ),
+    mean_pitch_diff = case_when(
+      stress_play_1 == "Penultimate" ~ mean_pitch_3 - mean_pitch_1,
+      stress_play_1 != "Penultimate" ~ mean_pitch_1 - mean_pitch_3
+    ),
+    mean_amplitude_diff = case_when(
+      stress_play_1 == "Penultimate" ~ mean_amplitude_3 - mean_amplitude_1,
+      stress_play_1 != "Penultimate" ~ mean_amplitude_1 - mean_amplitude_3
+    ),
+    duration_diff = case_when(
+      stress_play_1 == "Penultimate" ~ duration_3 - duration_1,
+      stress_play_1 != "Penultimate" ~ duration_1 - duration_3
+    ),
+    mean_tilt_diff = case_when(
+      stress_play_1 == "Penultimate" ~ mean_tilt_3 - mean_tilt_1,
+      stress_play_1 != "Penultimate" ~ mean_tilt_1 - mean_tilt_3
+    )
+  ) %>%
+  select(target_1, mean_target_looks_diff, mean_pitch_diff, mean_amplitude_diff, duration_diff, mean_tilt_diff)%>%
+  na.omit()
+
+antepenn<-result%>%
+  filter(stress_play_1=="Anti-penultimate")
+
+penn<-result%>%
+  filter(stress_play_1!="Anti-penultimate")
+```
+
+#within
+```{r}
+library(lmerTest)
+
+mod_full<-lm(mean_target_looks_diff~stress_play_1*
+                    (mean_pitch_diff+mean_amplitude_diff+mean_tilt_diff+duration_diff), data= result)
+
+mod_anti_penn<-lm(mean_target_looks_diff~
+                    mean_pitch_diff*mean_amplitude_diff*mean_tilt_diff*duration_diff, data= antepenn)
+mod_anti_penn<-lm(mean_target_looks_diff~
+                    mean_pitch_diff+mean_amplitude_diff+mean_tilt_diff+duration_diff, data= antepenn)
+
+mod_penn<-lm(mean_target_looks_diff~
+                    mean_pitch_diff*mean_amplitude_diff*mean_tilt_diff*duration_diff, data= penn)
+mod_penn<-lm(mean_target_looks_diff~
+                    mean_pitch_diff+mean_amplitude_diff+mean_tilt_diff+duration_diff, data= penn)
+
+summary(mod_anti_penn)
+summary(mod_penn)
+summary(mod_full)
+```
+
+
+
+```{r}
+
+View(ets_exp1_all_agg_part_wider_word)
+between_condition<-ets_exp1_all_agg_part_wider_word%>%
+  mutate(base = case_when(
+    str_starts(target, "c") ~ str_sub(target, 1, 4), # Remove last 3 characters if starts with 'c'
+    TRUE ~ str_sub(target, 1, 3)                    # Remove last 4 characters otherwise
+  ))
+
+
+counts<-between_condition%>%group_by(base)%>%count()
+df_penn <- ets_exp1_all_agg_part_wider_word %>% filter(stress_play == "Penultimate")
+df_a_penn <- ets_exp1_all_agg_part_wider_word %>% filter(stress_play != "Penultimate")
+
+colnames(df_penn) <- paste0(colnames(df_penn), "_p")
+colnames(df_a_penn) <- paste0(colnames(df_a_penn), "_a")
+
+# Join the two dataframes on target
+df_joined <- inner_join(df_penn, df_a_penn, by = c("target_p" = "target_a"))
+View(df_a_penn)
+# Calculate differences
+result <- df_joined %>%
+  mutate(
+    mean_target_looks_diff = case_when(
+      stress_play_1 == "Penultimate" ~ mean_target_looks_3 - mean_target_looks_1,
+      stress_play_1 != "Penultimate" ~ mean_target_looks_1 - mean_target_looks_3
+    ),
+    mean_pitch_diff = case_when(
+      stress_play_1 == "Penultimate" ~ mean_pitch_3 - mean_pitch_1,
+      stress_play_1 != "Penultimate" ~ mean_pitch_1 - mean_pitch_3
+    ),
+    mean_amplitude_diff = case_when(
+      stress_play_1 == "Penultimate" ~ mean_amplitude_3 - mean_amplitude_1,
+      stress_play_1 != "Penultimate" ~ mean_amplitude_1 - mean_amplitude_3
+    ),
+    duration_diff = case_when(
+      stress_play_1 == "Penultimate" ~ duration_3 - duration_1,
+      stress_play_1 != "Penultimate" ~ duration_1 - duration_3
+    ),
+    mean_tilt_diff = case_when(
+      stress_play_1 == "Penultimate" ~ mean_tilt_3 - mean_tilt_1,
+      stress_play_1 != "Penultimate" ~ mean_tilt_1 - mean_tilt_3
+    )
+  ) %>%
+  select(target_1, mean_target_looks_diff, mean_pitch_diff, mean_amplitude_diff, duration_diff, mean_tilt_diff)%>%
+  na.omit()
+
+antepenn<-result%>%
+  filter(stress_play_1=="Anti-penultimate")
+
+penn<-result%>%
+  filter(stress_play_1!="Anti-penultimate")
+```
+
+
+#exp 2 stuff:
+
+
+
+######experiment 2#########
+######experiment 2#########
+######experiment 2#########
+
+#ET clean up
+
+```{r}
+
+s_exp2_cleaned<-s_exp2%>%
+  select(participant.private.id,spreadsheet.row,randomise_trials,display,
+         randomise_trials,response,reaction.time,zone.type,display,q1,q2,q3,q4,
+         target,competitor,distractor,distractor_1,audio)%>%
+  filter(zone.type=="response_button_image")
+  #filter(display=="test_3_5")%>%
+  mutate(
+    split_parts = str_split(audio, "_"),
+    word_audio = sapply(split_parts, function(x) x[2]),
+    stress_audio = sapply(split_parts, function(x) x[3]),
+    audio_word_stress=paste(word_audio,stress_audio,sep="_")
+  )%>%
+  select(-split_parts)%>%
+  mutate(
+    split_parts = str_split(response, "_"),
+    word_response = sapply(split_parts, function(x) x[2]),
+    stress_response = sapply(split_parts, function(x) x[3]),
+    response_word_stress=paste(word_response,stress_response,sep="_")
+  ) %>%
+  select(-split_parts)%>%
+  mutate(correct=if_else(response_word_stress==audio_word_stress,1,0))%>%
+  mutate(randomise_trials=if_else(randomise_trials<=5,5,randomise_trials))%>%
+  mutate(stress_response=case_when(stress_response==1~"antipenultimate",
+                                   stress_response==2~"penultimate"),
+         stress_audio=case_when(stress_audio==1~"antipenultimate",
+                                   stress_audio==2~"penultimate"))
+
+s_exp2_part<-s_exp2_cleaned%>%
+  #filter(reaction.time<5000&reaction.time>1000)%>%
+  filter(participant.private.id%in%s_exp2_cleaned$participant.private.id)
+
+s_exp2_part%>%
+  ggplot(aes(x=factor(participant.private.id),y=reaction.time,alpha=.5))+
+  geom_jitter()
+
+s_exp2_part<-s_exp2_part%>%
+  group_by(participant.private.id)%>%
+  mutate(log_rt=sqrt(reaction.time),
+         participant_medians = median(log_rt))%>%
+  ungroup()%>%
+  mutate(medians_rt = median(log_rt),
+         abs_distance = abs(log_rt-medians_rt),
+         mean_distance = mean(abs_distance),
+         upper_mad = medians_rt+(mean_distance*mad_standard),
+         lower_mad = medians_rt-(mean_distance*mad_standard))%>%
+  dplyr::filter(log_rt<upper_mad &log_rt>lower_mad)%>%
+  dplyr::filter(participant_medians<upper_mad &participant_medians>lower_mad)
+
+s_exp2_part%>%
+  ggplot(aes(x=factor(participant.private.id),y=log_rt,alpha=.5))+
+  geom_jitter()+
+  geom_point(aes(x=factor(participant.private.id),y=participant_medians,alpha=.5),color="blue")+
+  geom_point(aes(x=factor(participant.private.id),y=lower_mad,alpha=.5),color="red")+
+  geom_point(aes(x=factor(participant.private.id),y=upper_mad,alpha=.5),color="red")
+    
+```
+
+
+```{r}
+s_exp2_agg<-s_exp2_cleaned%>%
+  group_by(participant.private.id,randomise_trials,stress_audio)%>%
+  summarize(score=mean(correct))
+
+s_exp2_agg%>%ggplot(aes(x=factor(randomise_trials),y=score,color=factor(stress_audio),group=interaction(participant.private.id,factor(stress_audio))))+
+  geom_line()+
+  geom_point(position = "identity")+
+  facet_wrap(factor(stress_audio)~.)
+ 
+s_exp2_agg2<-s_exp2_cleaned%>%
+  group_by(participant.private.id,randomise_trials)%>%
+  summarize(score=mean(correct))
+
+s_exp2_agg_means<-s_exp2_agg2%>%
+  ungroup()%>%
+  group_by(randomise_trials)%>%
+  summarize(mean=mean(score),
+            sd=sd(score))
+
+s_exp2_agg2%>%ggplot(aes(x=factor(randomise_trials),y=score,color=factor(randomise_trials)))+
+  geom_boxplot()+
+  geom_jitter()+
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 3, color = "black") +  # Add mean points
+  labs(x = "Randomise Trials", y = "Score", color = "Trial Number") +  # Label the axes and legend
+  theme_minimal()
+  
+```
+
+```{r}
+###play
+s_exp2_cleaned$dis
+play_dat<-s_exp2_cleaned%>%
+  filter(randomise_trials==13)%>%
+  mutate(target_q1=if_else(target==q1,1,0),
+         target_q2=if_else(target==q2,1,0),
+         target_q3=if_else(target==q3,1,0),
+         target_q4=if_else(target==q4,1,0),
+         comp_q1=if_else(competitor==q1,1,0),
+         comp_q2=if_else(competitor==q2,1,0),
+         comp_q3=if_else(competitor==q3,1,0),
+         comp_q4=if_else(competitor==q4,1,0),
+         dist1_q1=if_else(distractor==q1,1,0),
+         dist1_q2=if_else(distractor==q2,1,0),
+         dist1_q3=if_else(distractor==q3,1,0),
+         dist1_q4=if_else(distractor==q4,1,0),
+         dist2_q1=if_else(distractor_1==q1,1,0),
+         dist2_q2=if_else(distractor_1==q2,1,0),
+         dist2_q3=if_else(distractor_1==q3,1,0),
+         dist2_q4=if_else(distractor_1==q4,1,0))%>%
+  summarize(target_q1_total=sum(target_q1),
+            target_q2_total=sum(target_q2),
+            target_q3_total=sum(target_q3),
+            target_q4_total=sum(target_q4),
+            comp_q1_total=sum(comp_q1),
+            comp_q2_total=sum(comp_q2),
+            comp_q3_total=sum(comp_q3),
+            comp_q4_total=sum(comp_q4),
+            dist1_q1_total=sum(dist1_q1),
+            dist1_q2_total=sum(dist1_q2),
+            dist1_q3_total=sum(dist1_q3),
+            dist1_q4_total=sum(dist1_q4),
+            dist2_q1_total=sum(dist2_q1),
+            dist2_q2_total=sum(dist2_q2),
+            dist2_q3_total=sum(dist2_q3),
+            dist2_q4_total=sum(dist2_q4))
+
+play_dat<-s_exp2_cleaned%>%
+  filter(randomise_trials==7|randomise_trials==11)%>%
+  mutate(target_q1=if_else(target==q1,1,0),
+         target_q2=if_else(target==q2,1,0),
+         target_q3=if_else(target==q3,1,0),
+         target_q4=if_else(target==q4,1,0),
+         comp_q1=if_else(competitor==q1,1,0),
+         comp_q2=if_else(competitor==q2,1,0),
+         comp_q3=if_else(competitor==q3,1,0),
+         comp_q4=if_else(competitor==q4,1,0))%>%
+  group_by(randomise_trials)%>%
+  summarize(target_q1_total=sum(target_q1),
+            target_q2_total=sum(target_q2),
+            target_q3_total=sum(target_q3),
+            target_q4_total=sum(target_q4),
+            comp_q1_total=sum(comp_q1),
+            comp_q2_total=sum(comp_q2),
+            comp_q3_total=sum(comp_q3),
+            comp_q4_total=sum(comp_q4))
+```
+
+
+```{r}
+library(conflicted)
+s_exp2_et_cleaned<-s_exp2_et%>%
+  select(participant_id,spreadsheet_row,type,time_stamp,
+         time_elapsed,x_pred_normalised,y_pred_normalised,face_conf,screen_index)%>%
+  mutate(participant.private.id=participant_id,
+         spreadsheet.row=spreadsheet_row)%>%
+  select(!c(participant_id,spreadsheet_row))%>%
+  filter(type=="prediction")%>%
+  group_by(participant.private.id,spreadsheet.row)%>%
+  mutate(time=time_stamp-min(time_stamp),
+         time_rounded = round(time / 50) * 50)%>%
+  mutate(time_rounded=time_rounded-800)%>%
+  mutate(time_rounded=time_rounded-200)%>%
+  ungroup()
+
+penn_times<-c(396, 566,699)
+anti_times<-c(499, 566,669)
+s_exp2_data_all<-s_exp2_et_cleaned%>%
+  full_join(s_exp2_cleaned_corr)%>%
+  na.omit()%>%
+  filter(face_conf>.5)%>%
+  filter(x_pred_normalised<1&x_pred_normalised>-1)%>%
+  filter(y_pred_normalised<1&y_pred_normalised>-1)%>%
+  group_by(spreadsheet.row,participant.private.id)%>%
+  mutate(randomizer_x = sample(c(1, -1), size = 1, replace = TRUE),
+         randomizer_y = sample(c(1, -1), size = 1, replace = TRUE))%>%
+  ungroup()%>%
+  mutate(x_pred_normalised=x_pred_normalised-.5,
+         y_pred_normalised=y_pred_normalised-.5)%>%
+  mutate(quadrant = case_when(
+            x_pred_normalised < origin[1] & y_pred_normalised > origin[2] ~ 1,
+            x_pred_normalised > origin[1] & y_pred_normalised > origin[2] ~ 2,
+            x_pred_normalised < origin[1] & y_pred_normalised < origin[2] ~ 3,
+            x_pred_normalised > origin[1] & y_pred_normalised < origin[2] ~ 4))%>%
+    mutate(random_x_pred_normalised=x_pred_normalised*randomizer_x,
+         random_y_pred_normalised=y_pred_normalised*randomizer_y)%>%
+    mutate(randomized_quadrant = case_when(
+            random_x_pred_normalised < origin[1] & random_y_pred_normalised > origin[2] ~ 1,
+            random_x_pred_normalised > origin[1] & random_y_pred_normalised > origin[2] ~ 2,
+            random_x_pred_normalised < origin[1] & random_y_pred_normalised < origin[2] ~ 3,
+            random_x_pred_normalised > origin[1] & random_y_pred_normalised < origin[2] ~ 4))%>%
+  mutate(random_q1=case_when(randomizer_x==1&randomizer_y==1~q1,
+                             randomizer_x==1&randomizer_y==-1~q3,
+                             randomizer_x==-1&randomizer_y==1~q2,
+                             randomizer_x==-1&randomizer_y==-1~q4),
+         random_q2=case_when(randomizer_x==1&randomizer_y==1~q2,
+                             randomizer_x==1&randomizer_y==-1~q4,
+                             randomizer_x==-1&randomizer_y==1~q1,
+                             randomizer_x==-1&randomizer_y==-1~q3),
+         random_q3=case_when(randomizer_x==1&randomizer_y==1~q3,
+                             randomizer_x==1&randomizer_y==-1~q1,
+                             randomizer_x==-1&randomizer_y==1~q4,
+                             randomizer_x==-1&randomizer_y==-1~q2),
+         random_q4=case_when(randomizer_x==1&randomizer_y==1~q4,
+                             randomizer_x==1&randomizer_y==-1~q2,
+                             randomizer_x==-1&randomizer_y==1~q3,
+                             randomizer_x==-1&randomizer_y==-1~q1))%>%
+  mutate(current_quadrant=case_when(randomized_quadrant == 1~random_q1,
+                                    randomized_quadrant == 2~random_q2,
+                                    randomized_quadrant == 3~random_q3,
+                                    randomized_quadrant == 4~random_q4))%>%
+  mutate(target_looks=if_else(current_quadrant==target,1,0),
+         competitor_looks=if_else(current_quadrant==competitor,1,0),
+         dist1_looks=if_else(current_quadrant==distractor_1,1,0),
+         dist2_looks=if_else(current_quadrant==distractor,1,0))%>%
+  mutate(dist1_looks=if_else(randomise_trials%in% c(2, 3, 4, 5, 7, 11),NA,dist1_looks),
+         dist2_looks=if_else(randomise_trials%in% c(2, 3, 4, 5, 7, 11),NA,dist2_looks))%>%
+  filter(time_rounded<1000&time_rounded>0)%>%
+  filter((randomise_trials %in% c(9, 13)) |
+         (randomise_trials %in% c(2, 3, 4, 5, 7, 11) & y_pred_normalised >= 0))%>%
+  ungroup()%>%
+  mutate(syllable=case_when(time_rounded<200~0,
+                            stress_audio=="penultimate" & time_rounded>200 &
+                              time_rounded<penn_times[1]~1,
+                            stress_audio=="penultimate" & time_rounded>=penn_times[1] &
+                              time_rounded<mean(penn_times[2],penn_times[3]) ~2,
+                            stress_audio=="penultimate" & time_rounded<=penn_times[3]~3,
+                            stress_audio=="antipenultimate" & time_rounded>200 &
+                              time_rounded<anti_times[1]~1,
+                            stress_audio=="antipenultimate" & time_rounded>=anti_times[1] &
+                              time_rounded<mean(anti_times[2],anti_times[3]) ~2,
+                            stress_audio=="antipenultimate" & time_rounded<=anti_times[3]~3))%>%
+  filter(time_rounded<1000)%>%
+  filter(randomise_trials==13)%>%
+  mutate(trials_code=if_else(randomise_trials<6,"non-stress","stress"))
+
+s_exp2_data_all<-s_exp2_data_all%>%filter(correct==1)  
+  
+ets_exp2_all_agg<-s_exp2_data_all%>%
+  group_by(stress_audio,time_rounded,trials_code)%>%
+  summarise(mean_target_looks=sum(target_looks),
+            mean_competitor_looks=sum(competitor_looks),
+            mean_dist1_looks=sum(dist1_looks),
+            mean_dist2_looks=sum(dist2_looks))%>%
+  ungroup()%>%
+  pivot_longer(cols=c(mean_target_looks:mean_dist2_looks),names_to = "names",values_to="values")
+  
+ets_exp2_all_agg%>%
+  ggplot(aes(x=time_rounded,y=values,color=names))+
+  geom_point()+
+  geom_smooth()+
+  facet_grid(factor(stress_audio)~factor(trials_code))
+
+ets_exp2_all_agg_part<-s_exp2_data_all%>%
+  filter(time_rounded<800&time_rounded>0)%>%
+  group_by(stress_audio,participant.private.id,randomise_trials)%>%
+  summarise(mean_target_looks=mean(target_looks),
+            mean_competitor_looks=mean(competitor_looks),
+            mean_dist1_looks=mean(dist1_looks),
+            mean_dist2_looks=mean(dist2_looks))%>%
+  ungroup()%>%
+  pivot_longer(cols=c(mean_target_looks:mean_dist2_looks),names_to = "names",values_to="values")
+  
+ets_exp2_all_agg_part%>%
+  ggplot(aes(x=factor(participant.private.id),y=values,color=names))+
+  geom_point()+
+  geom_smooth()+
+  facet_grid(stress_audio~randomise_trials)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+```
+
+```{r}
+ets_exp2_all_agg_part_wider<-ets_exp2_all_agg_part%>%
+  pivot_wider(names_from = names,values_from = values)%>%
+  mutate(proportion_o_looks=mean_target_looks-mean_competitor_looks)%>%
+  left_join(battery_agg_wider_simp)%>%
+  left_join(digit_cleaned_simp)%>%
+  left_join(lextale_agg_cleaned_simp)%>%
+  left_join(italian_lextale_agg_cleaned_simp)%>%
+  left_join(autism_cleaned)
+
+
+ets_exp2_all_agg_part_wider%>%
+  ggplot(aes(x=stress_audio,y=proportion_o_looks,color=stress_audio))+
+  geom_boxplot()+
+  geom_jitter()+
+  facet_grid(.~randomise_trials)+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+full_data_exp2<-ets_exp2_all_agg_part_wider%>%
+  select(!c(participant.private.id,c_battery_up_dur:c_battery_up_risetime,
+            mean_target_looks:mean_dist2_looks))
+full_data_exp2$randomise_trials<-as.factor(full_data_exp2$randomise_trials)
+ggpairs(full_data_exp2)
+```
+
+```{r message=FALSE, warning=FALSE}
+force_var <- "stress_audio"
+force_in_vector
+force_in_vector <- rep(FALSE,28)  # Assuming 28 variables as in your output
+names(force_in_vector) <- colnames(full_data_exp2)  # Make sure this matches your data structure
+force_in_vector["stress_play"] <- TRUE
+# Exclude the response and the forced variable from the predictors
+predictors <- setdiff(names(full_data_exp2), c("proportion_o_looks", force_var))
+
+# Create the formula ensuring 'stress_play' is always included
+formula_interactions <- as.formula(paste("proportion_o_looks ~ (", force_var, "+", paste(predictors, collapse = "+"), ")^2"))
+formula_interactions
+
+subset_fit <- regsubsets(formula_interactions, data = full_data_exp2, nbest = 1, nvmax = 10, force.in = force_in_vector,really.big=T)
+
+subset_summary <- summary(subset_fit)
+subset_summary
+
+# Print summary statistics
+subset_summary$adjr2
+subset_summary$cp
+subset_summary$bic
+
+# Choose a model based on BIC
+selected_model <- which.min(subset_summary$bic)
+subset_summary$which[selected_model, ]
+
+# Cross-validation to check model performance
+fit_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+fit_control
+```
+
+```{r}
+included_predictors <- names(subset_summary$which[selected_model, ][subset_summary$which[selected_model, ] & names(subset_summary$which[selected_model, ]) != "(Intercept)"])
+
+formula_str <- "proportion_o_looks ~"
+formula_str <- paste(formula_str, paste(included_predictors, collapse = " + "), sep = "")
+formula_str
+
+formula_str <- gsub("penultimate", "", formula_str, perl = TRUE)
+formula_str <- gsub("13", "", formula_str, perl = TRUE)
+formula_str <- gsub("11", "", formula_str, perl = TRUE)
+formula_str <- gsub("7", "", formula_str, perl = TRUE)
+model_formula <- as.formula(formula_str)
+model_lm2 <- lm(model_formula, data = ets_exp2_all_agg_part_wider)
+
+# Display the summary of the model
+summary(model_lm2)
+
+check_model(m1)
+check_model(model_lm)
+```
+
+```{r}
+coef_df2 <- summary(model_lm2)$coefficients
+
+coef_df2 <- as.data.frame(coef_df2)
+coef_df2$Predictor <- rownames(coef_df2)
+rownames(coef_df2) <- NULL
+
+ci_level <- 1.96
+coef_df2$CI_Lower <- coef_df2$Estimate - ci_level * coef_df2$`Std. Error`
+coef_df2$CI_Upper <- coef_df2$Estimate + ci_level * coef_df2$`Std. Error`
+
+
+ggplot(coef_df2, aes(x = Predictor, y = Estimate, ymin = CI_Lower, ymax = CI_Upper)) +
+  geom_pointrange() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Effect Sizes and Confidence Intervals for Model Coefficients",
+       x = "Predictors",
+       y = "Estimate") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+coord_flip()+theme_bw()
+```

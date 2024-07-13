@@ -1,0 +1,93 @@
+---
+title: "combine_data"
+author: "Adam A. Bramlett"
+date: "2024-07-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup, include=FALSE}
+library(purrr)
+library(tidyr)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(psycho)
+library(readxl)
+library(GGally)
+library(conflicted)
+library(performance)
+library(cowplot)
+library(lme4)
+library(lmerTest)
+library(MASS) 
+library(caret)
+library(leaps)
+```
+
+```{r}
+path<-"../../ppcc_iflu_data/data_exp_170005-v9"
+list.files(path)
+
+read_csvs_with_pattern <- function(path, pattern) {
+  files <- list.files(path, pattern = pattern, full.names = TRUE)
+  data_list <- map(files, read.csv)
+  combined_data <- bind_rows(data_list)
+  colnames(combined_data)<-tolower(colnames(combined_data))
+  return(combined_data)
+}
+
+read_xls_with_pattern <- function(path, pattern) {
+  files <- list.files(path, pattern = pattern, full.names = TRUE)
+  data_list <- map(files, read_excel)
+  combined_data <- bind_rows(data_list)
+  colnames(combined_data)<-tolower(colnames(combined_data))
+  return(combined_data)
+}
+
+pattern="11wd"
+s_exp1 <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+s_exp1_et <- read_xls_with_pattern(file.path(path,"uploads/"), pattern)
+
+#pattern="vg7n"
+#s_exp2 <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+#s_exp2_et <- read_xls_with_pattern(file.path(path,"uploads/"), pattern)
+
+pattern="1f8j"
+digit_span <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+
+pattern="7oyj|9uw1|wxw8|qa8d"
+battery <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+
+pattern="rsao"
+lextale <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+
+pattern="m24c"
+italian_lextale <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+
+pattern="3nvp"
+autism <- read_csvs_with_pattern(path, paste(pattern,".*\\.csv",sep=""))
+
+acoustic_data<-read.csv("acoustic_data_ppcc.csv")
+
+removal <- data.frame(task = character(), 
+                      value = numeric(), 
+                      stringsAsFactors = FALSE)
+```
+```{r}
+target_dir <- "../../ppcc_iflu_data/read_data"
+dir.create(target_dir, showWarnings = FALSE)
+
+write.csv(s_exp1, file.path(target_dir, "s_exp1.csv"), row.names = FALSE)
+write.csv(s_exp1_et, file.path(target_dir, "s_exp1_et.csv"), row.names = FALSE)
+write.csv(digit_span, file.path(target_dir, "digit_span.csv"), row.names = FALSE)
+write.csv(battery, file.path(target_dir, "battery.csv"), row.names = FALSE)
+write.csv(lextale, file.path(target_dir, "lextale.csv"), row.names = FALSE)
+write.csv(italian_lextale, file.path(target_dir, "italian_lextale.csv"), row.names = FALSE)
+write.csv(autism, file.path(target_dir, "autism.csv"), row.names = FALSE)
+write.csv(acoustic_data, file.path(target_dir, "acoustic_data.csv"), row.names = FALSE)
+write.csv(removal, file.path(target_dir, "removal.csv"), row.names = FALSE)
+```
