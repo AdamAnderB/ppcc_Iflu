@@ -4,4 +4,4 @@
 .Ruserdata
 *Tmp*
 gorilla_dfs/
-.Rproj
+*.Rproj
