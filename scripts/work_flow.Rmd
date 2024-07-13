@@ -607,7 +607,7 @@ plot2<-ets_exp1_all_agg %>%
   )
 
 combined_plot <- plot_grid(plot1, plot2, ncol = 1)+
-  draw_label("Anti-penultimate (bottom) and penultimate (top) items proportion of looks", x = 0.02, y = 0.5, angle = 90, size = 14)
+  draw_label("Antepenultimate (bottom) and penultimate (top) items proportion of looks", x = 0.02, y = 0.5, angle = 90, size = 14)
 combined_plot
 
 ggsave("../visuals/pen_vs_anti_pen.jpeg", plot = combined_plot, width = 6, height = 8, dpi = 300)
@@ -1017,7 +1017,7 @@ tidy_combined <- tidy_combined %>%
   mutate(term = str_replace_all(term, "scaled", "")) %>%
   mutate(term = str_replace_all(term, "dprime", "")) %>%
   mutate(term = str_replace_all(term, "Autism score", "score")) %>%
-  mutate(term = str_replace_all(term, "tilt", "spec tilt")) %>%
+  mutate(term = str_replace_all(term, "tilt", "spectral tilt")) %>%
   mutate(term = str_replace_all(term, "(battery d') dur", "(battery d') duration"))%>%
   mutate(interaction_label = case_when(
            str_detect(term, "Intercept") ~ 1,
@@ -1040,7 +1040,7 @@ analysis_3_plot <- ggplot(tidy_combined, aes(x = estimate, y = term, color = mod
   geom_point(position = position_dodge(width = 0.5), size = 3) +
   geom_errorbarh(aes(xmin = estimate - 1.96 * std.error, xmax = estimate + 1.96 * std.error), 
                  height = 0, position = position_dodge(width = 0.5), size = 1) +
-  labs(title = "Model Comparison", x = "Estimate", y = "Term") +
+  labs(title = "", x = "Estimate", y = "Term",color = "Model Type") +
   theme_minimal() +
   geom_vline(xintercept = 0, linetype = "dashed") +
   facet_grid(. ~ syllable, labeller = labeller(syllable = custom_labels)) +
@@ -1223,10 +1223,10 @@ library(gghalves)
 plot<-ggplot(long_data, aes(x = measure, y = value)) +
   geom_half_violin(trim = FALSE, fill = NA, color = "black", side = "l") +
   geom_half_boxplot(width = 0.1, outlier.shape = NA, fill = NA, color = "black", side = "r") +
-  geom_point(shape = 95, color = "darkgreen", size = 3, alpha = 0.6) + # Vertical tick marks
-  labs(title = "Half Boxplot, Half Violin Plot of Task Measures",
+  geom_point(shape = 95, color = "#1F4C4C", size = 10, alpha = 0.3) + # Vertical tick marks
+  labs(title = "",
        x = "Task Measures",
-       y = "Centered Value") +
+       y = "Centered Values") +
   theme_minimal() +
   theme(legend.position = "none",
         axis.title.x.top = element_text(),
@@ -1380,16 +1380,16 @@ id_vars <- c("dprime_battery_up_dur", "dprime_battery_up_ptich", "dprime_battery
 # Convert the summaries into data frames
 result_ap_data_1_coefs <- as.data.frame(result_ap_data_1$summary$coef)
 result_ap_data_1_coefs$model <- "ap_data_1"
-result_ap_data_1_coefs$syllable <- "syllable 1"
+result_ap_data_1_coefs$syllable <- "Syllable 1"
 result_ap_data_3_coefs <- as.data.frame(result_ap_data_3$summary$coef)
 result_ap_data_3_coefs$model <- "ap_data_3"
-result_ap_data_3_coefs$syllable <- "syllable 3"
+result_ap_data_3_coefs$syllable <- "Syllable 2"
 result_pp_data_1_coefs <- as.data.frame(result_pp_data_1$summary$coef)
 result_pp_data_1_coefs$model <- "pp_data_1"
-result_pp_data_1_coefs$syllable <- "syllable 1"
+result_pp_data_1_coefs$syllable <- "Syllable 1"
 result_pp_data_3_coefs <- as.data.frame(result_pp_data_3$summary$coef)
 result_pp_data_3_coefs$model <- "pp_data_3"
-result_pp_data_3_coefs$syllable <- "syllable 3"
+result_pp_data_3_coefs$syllable <- "Syllable 2"
 all_coefs <- rbind(result_ap_data_1_coefs, result_ap_data_3_coefs, result_pp_data_1_coefs, result_pp_data_3_coefs)
 
 # Prepare data for plotting
@@ -1430,8 +1430,8 @@ all_coefs <- all_coefs %>%
   mutate(term = str_replace_all(term, "lextale score", "lextale (English)")) %>%
   mutate(term = str_replace_all(term, "scaled", "")) %>%
   mutate(term = str_replace_all(term, "dprime", "")) %>%
-  mutate(term = str_replace_all(term, "Autism score", "score")) %>%
-  mutate(term = str_replace_all(term, "tilt", "spec tilt")) %>%
+  mutate(term = str_replace_all(term, "autism score", "ASDQ")) %>%
+  mutate(term = str_replace_all(term, "tilt", "spectral tilt")) %>%
   mutate(term = str_replace_all(term, "(battery d') dur", "(battery d') duration")) %>%
   mutate(term = ifelse(old_term %in% acoustic_vars, paste0("**", term, "**"), term))
 
@@ -1455,9 +1455,9 @@ create_coef_plot <- function(coef_df, model_label, remove_y_labels = FALSE) {
     geom_point(position = position_dodge(width = 0.5)) +
     geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2, position = position_dodge(width = 0.5)) +
     geom_text(aes(label = significance, x = 10, color = model_color), vjust = 0.5, position = position_dodge(width = 0.5),show.legend = FALSE) +
-    labs(title = paste("Coefficient Estimates with Confidence Intervals -", model_label),
+    labs(title = "",
          x = "Estimate",
-         y = if (remove_y_labels) NULL else "Predictor",
+         y = if (remove_y_labels) NULL else "Term",
          color = "Model Type") +
     theme_minimal() +
     theme(legend.position = "top",
@@ -1486,8 +1486,10 @@ conflicts_prefer(dplyr::filter)
 # Combine and preprocess data
 full_data <- rbind(ap_data_1_id, ap_data_3_id, pp_data_1_id, pp_data_3_id)
 
+View(ap_data_1_id)
 full_data_clean <- full_data %>%
-  select(stress_play, syllable, mean_pitch, mean_amplitude, duration, mean_tilt)%>%
+  select(stress_play, syllable, dprime_battery_up_dur, dprime_battery_up_formants, dprime_battery_up_ptich, dprime_battery_up_risetime,
+         lextale_score, italian_lextale_score, mean_working_memory, autism_score)%>%
   unique()%>%
   filter(syllable != 2)%>%
   mutate(word_and_stress = as.factor(paste(stress_play, syllable, sep = "")))%>%
@@ -1556,22 +1558,6 @@ plot(results, type = c("g", "o"))
 library(pdp)
 library(ggplot2)
 library(gridExtra)
-
-# Generate PDP for 'mean_pitch'
-# Generate PDP for 'mean_pitch'
-pdp_duration <- pdp::partial(rf_model, pred.var = "duration", train = data_standardized)
-plot_duration <- autoplot(pdp_duration)
-
-# Generate PDP for 'mean_pitch'
-pdp_mean_pitch <- pdp::partial(rf_model, pred.var = "mean_pitch", train = data_standardized)
-plot_mean_pitch <- autoplot(pdp_mean_pitch)
-
-# Generate PDP for 'mean_tilt'
-pdp_mean_tilt <- pdp::partial(rf_model, pred.var = "mean_tilt", train = data_standardized)
-plot_mean_tilt <- autoplot(pdp_mean_tilt)
-
-# Arrange plots side by side
-grid.arrange(plot_duration, plot_mean_pitch, plot_mean_tilt, ncol = 3)
 ```
 
 ```{r}
