@@ -1,6 +1,6 @@
 ---
 title: "left_over_code"
-author: "Adam A. Bramlett"
+author: "blind"
 date: "2024-07-10"
 output: html_document
 ---
@@ -529,3 +529,340 @@ ggplot(coef_df2, aes(x = Predictor, y = Estimate, ymin = CI_Lower, ymax = CI_Upp
        y = "Estimate") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))+coord_flip()+theme_bw()
 ```
+###full model selection attempt
+
+```{r}
+library(glmnet)
+comp_tar_longer_id_penn<-na.omit(comp_tar_longer_id_penn)
+# Create the design matrix and response vector
+x_penn <- model.matrix(values ~ syllable * (dprime_battery_up_dur + dprime_battery_up_ptich + dprime_battery_up_risetime + dprime_battery_up_formants + lextale_score + autism_score + italian_lextale_score + lextale_score), data = comp_tar_longer_id_penn)[, -1]
+y_penn <- comp_tar_longer_id_penn$values
+
+# Set up lambda values for LASSO regression
+lambda_search_space <- 10^seq(10, -2, length = 100)
+
+# Fit the LASSO regression model
+lasso_model_penn <- glmnet(x_penn, y_penn, alpha = 1, lambda = lambda_search_space, family = "binomial")
+
+# Cross-validation to find the best lambda
+cv_penn <- cv.glmnet(x_penn, y_penn, alpha = 1, family = "binomial")
+best_lambda_penn <- cv_penn$lambda.min
+
+# Extract coefficients for the best lambda
+coef_lasso_best <- coef(lasso_model_penn, s = best_lambda_penn)
+print(coef_lasso_best)
+
+# Convert coefficients to data frame for visualization
+coef_df <- as.data.frame(as.matrix(coef_lasso_best))
+coef_df$Predictor <- rownames(coef_df)
+rownames(coef_df) <- NULL
+
+# Visualize the coefficients
+ggplot(coef_df, aes(x = Predictor, y = s1)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = paste("LASSO Regression Coefficients at Best Lambda (", round(best_lambda_penn, 4), ")", sep = ""),
+       x = "Predictor",
+       y = "Coefficient Value") +
+  theme_minimal()
+
+# Select significant variables based on LASSO coefficients
+significant_vars <- coef_df %>%
+  filter(s1 != 0) %>%
+  pull(Predictor)
+
+# Clean up the variable names by replacing syllable1, syllable2, and syllable3 with syllable
+significant_vars <- gsub("syllable[123]", "syllable", significant_vars)
+
+# Remove duplicate variables
+significant_vars <- unique(significant_vars)
+
+
+# Prepare formula for GLMM using significant variables
+significant_vars <- significant_vars[significant_vars != "(Intercept)"] # Remove intercept if present
+formula_str <- paste("values ~", paste(significant_vars, collapse = " + "), "+ (1|word_play)")
+
+# Convert the string to a formula object
+formula <- as.formula(formula_str)
+
+# Print the formula to ensure it's correct
+print(formula)
+
+# Fit GLMM with selected variables
+comp_tar_model_selected <- glmer(formula, data = comp_tar_longer_id_penn, family = "binomial")
+
+# Summary of the GLMM
+summary(comp_tar_model_selected)
+
+```
+```{r}
+library(glmnet)
+comp_tar_longer_id_a_penn<-na.omit(comp_tar_longer_id_a_penn)
+# Create the design matrix and response vector
+x_penn <- model.matrix(values ~ syllable * (dprime_battery_up_dur + dprime_battery_up_ptich + dprime_battery_up_risetime + dprime_battery_up_formants + lextale_score + autism_score + italian_lextale_score + lextale_score), data = comp_tar_longer_id_a_penn)[, -1]
+y_penn <- comp_tar_longer_id_a_penn$values
+
+# Set up lambda values for LASSO regression
+lambda_search_space <- 10^seq(10, -2, length = 100)
+
+# Fit the LASSO regression model
+lasso_model_penn <- glmnet(x_penn, y_penn, alpha = 1, lambda = lambda_search_space, family = "binomial")
+
+# Cross-validation to find the best lambda
+cv_penn <- cv.glmnet(x_penn, y_penn, alpha = 1, family = "binomial")
+best_lambda_penn <- cv_penn$lambda.min
+
+# Extract coefficients for the best lambda
+coef_lasso_best <- coef(lasso_model_penn, s = best_lambda_penn)
+print(coef_lasso_best)
+
+# Convert coefficients to data frame for visualization
+coef_df <- as.data.frame(as.matrix(coef_lasso_best))
+coef_df$Predictor <- rownames(coef_df)
+rownames(coef_df) <- NULL
+
+# Visualize the coefficients
+ggplot(coef_df, aes(x = Predictor, y = s1)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = paste("LASSO Regression Coefficients at Best Lambda (", round(best_lambda_penn, 4), ")", sep = ""),
+       x = "Predictor",
+       y = "Coefficient Value") +
+  theme_minimal()
+
+# Select significant variables based on LASSO coefficients
+significant_vars <- coef_df %>%
+  filter(s1 != 0) %>%
+  pull(Predictor)
+
+# Clean up the variable names by replacing syllable1, syllable2, and syllable3 with syllable
+significant_vars <- gsub("syllable[123]", "syllable", significant_vars)
+
+# Remove duplicate variables
+significant_vars <- unique(significant_vars)
+
+
+# Prepare formula for GLMM using significant variables
+significant_vars <- significant_vars[significant_vars != "(Intercept)"] # Remove intercept if present
+formula_str <- paste("values ~", paste(significant_vars, collapse = " + "), "+ (1|word_play)")
+
+# Convert the string to a formula object
+formula <- as.formula(formula_str)
+
+# Print the formula to ensure it's correct
+print(formula)
+
+# Fit GLMM with selected variables
+comp_tar_model_selected <- glmer(formula, data = comp_tar_longer_id_a_penn, family = "binomial")
+
+# Summary of the GLMM
+summary(comp_tar_model_selected)
+
+```
+
+```{r}
+#installed.packages("leaps")
+#installed.packages("MASS")
+#installed.packages("caret")
+#library(MASS) 
+#library(caret)
+#library(leaps)
+
+# Ensure 'stress_play' is always included in the model
+
+comp_tar_longer_id_penn_cleaned<-comp_tar_longer_id_penn%>%select("syllable", "values","dprime_battery_up_dur", "dprime_battery_up_formants", "dprime_battery_up_ptich","dprime_battery_up_risetime","mean_working_memory","lextale_score","italian_lextale_score","autism_score")
+
+force_in_vector <- rep(FALSE,ncol(comp_tar_longer_id_penn_cleaned))  # Assuming 28 variables as in your output
+names(force_in_vector) <- colnames(comp_tar_longer_id_penn_cleaned)  # Make sure this matches your data structure
+names(force_in_vector)
+#force_in_vector["stress_play"] <- TRUE
+#force_in_vector
+# Exclude the response and the forced variable from the predictors
+predictors <- setdiff(names(comp_tar_longer_id_penn_cleaned), c("values"))
+predictors
+# Create the formula ensuring 'stress_play' is always included
+formula_interactions <- as.formula(paste("values ~ syllable* (", paste(predictors, collapse = "+"), ")"))
+formula_interactions
+
+comp_tar_longer_id_penn_cleaned <- na.omit(comp_tar_longer_id_penn_cleaned)
+
+subset_fit <- leaps::regsubsets(formula_interactions, data = comp_tar_longer_id_penn_cleaned, nbest = 1, nvmax = 15,really.big=T)
+
+
+
+glmulti_fit <- glmulti(
+  formula = formula_interactions,
+  data = comp_tar_longer_id_penn_cleaned,
+  level = 1,  # Consider interactions up to 1st degree
+  fitfunction = "glm",
+  crit = "aic",  # Criterion to be used for model selection
+  method = "h",  # Exhaustive search
+  family = binomial()  # Change family if needed
+)
+
+# Perform subset selection allowing other variables to vary
+subset_summary <- summary(subset_fit)
+subset_summary
+
+# Print summary statistics
+subset_summary$adjr2
+subset_summary$cp
+subset_summary$bic
+
+# Choose a model based on BIC
+selected_model <- which.min(subset_summary$bic)
+subset_summary$which[selected_model, ]
+
+m1<-lm(values~(.)^2,data=comp_tar_longer_id_penn_cleaned)
+summary(m1)
+
+included_predictors <- names(subset_summary$which[selected_model, ][subset_summary$which[selected_model, ] & names(subset_summary$which[selected_model, ]) != "(Intercept)"])
+
+formula_str <- "values ~"
+formula_str <- paste(formula_str, paste(included_predictors, collapse = " + "), sep = "")
+formula_str
+
+formula_str <- gsub("Anti-penultimate", "", formula_str, perl = TRUE)
+formula_str <- gsub("1", "", formula_str, perl = TRUE)
+formula_str <- gsub("2", "", formula_str, perl = TRUE)
+formula_str <- gsub("3", "", formula_str, perl = TRUE)
+model_formula <- as.formula(formula_str)
+model_formula
+
+model_lm <- lm(model_formula, data = comp_tar_longer_id_penn_cleaned)
+model_lm
+# Display the summary of the model
+summary(model_lm)
+check_model(m1)
+check_model(model_lm)
+```
+
+```{r}
+#installed.packages("leaps")
+#installed.packages("MASS")
+#installed.packages("caret")
+#library(MASS) 
+#library(caret)
+#library(leaps)
+
+# Ensure 'stress_play' is always included in the model
+
+comp_tar_longer_id_cleaned<-comp_tar_longer_id%>%select("syllable","stress_play", "values","dprime_battery_up_dur", "dprime_battery_up_formants", "dprime_battery_up_ptich","dprime_battery_up_risetime","mean_working_memory","lextale_score","italian_lextale_score","autism_score")
+
+force_in_vector <- rep(FALSE,ncol(comp_tar_longer_id_cleaned))  # Assuming 28 variables as in your output
+names(force_in_vector) <- colnames(comp_tar_longer_id_cleaned)  # Make sure this matches your data structure
+names(force_in_vector)
+#force_in_vector["stress_play"] <- TRUE
+#force_in_vector
+# Exclude the response and the forced variable from the predictors
+predictors <- setdiff(names(comp_tar_longer_id_cleaned), c("values"))
+predictors
+# Create the formula ensuring 'stress_play' is always included
+formula_interactions <- as.formula(paste("values ~ stress_play* (", paste(predictors, collapse = "+"), ")"))
+formula_interactions
+
+comp_tar_longer_id_cleaned <- na.omit(comp_tar_longer_id_cleaned)
+
+subset_fit <- leaps::regsubsets(formula_interactions, data = comp_tar_longer_id_cleaned, nbest = 1, nvmax = 15,really.big=T)
+
+# Perform subset selection allowing other variables to vary
+subset_summary <- summary(subset_fit)
+subset_summary
+
+# Print summary statistics
+subset_summary$adjr2
+subset_summary$cp
+subset_summary$bic
+
+# Choose a model based on BIC
+selected_model <- which.min(subset_summary$bic)
+subset_summary$which[selected_model, ]
+
+m1<-lm(proportion_o_looks~(.)^2,data=full_data_exp1)
+summary(m1)
+
+included_predictors <- names(subset_summary$which[selected_model, ][subset_summary$which[selected_model, ] & names(subset_summary$which[selected_model, ]) != "(Intercept)"])
+
+formula_str <- "values ~"
+formula_str <- paste(formula_str, paste(included_predictors, collapse = " + "), sep = "")
+formula_str
+
+formula_str <- gsub("Anti-penultimate", "", formula_str, perl = TRUE)
+formula_str <- gsub("1", "", formula_str, perl = TRUE)
+formula_str <- gsub("2", "", formula_str, perl = TRUE)
+formula_str <- gsub("3", "", formula_str, perl = TRUE)
+model_formula <- as.formula(formula_str)
+model_formula
+
+model_lm <- lm(model_formula, data = comp_tar_longer_id_cleaned)
+model_lm
+# Display the summary of the model
+summary(model_lm)
+check_model(m1)
+check_model(model_lm)
+```
+```{r}
+#installed.packages("leaps")
+#installed.packages("MASS")
+#installed.packages("caret")
+#library(MASS) 
+#library(caret)
+#library(leaps)
+
+# Ensure 'stress_play' is always included in the model
+
+comp_tar_longer_id_a_penn_cleaned<-comp_tar_longer_id_a_penn%>%select("syllable", "values","dprime_battery_up_dur", "dprime_battery_up_formants", "dprime_battery_up_ptich","dprime_battery_up_risetime","mean_working_memory","lextale_score","italian_lextale_score","autism_score")
+
+force_in_vector <- rep(FALSE,ncol(comp_tar_longer_id_a_penn_cleaned))  # Assuming 28 variables as in your output
+names(force_in_vector) <- colnames(comp_tar_longer_id_a_penn_cleaned)  # Make sure this matches your data structure
+names(force_in_vector)
+#force_in_vector["stress_play"] <- TRUE
+#force_in_vector
+# Exclude the response and the forced variable from the predictors
+predictors <- setdiff(names(comp_tar_longer_id_a_penn_cleaned), c("values"))
+predictors
+# Create the formula ensuring 'stress_play' is always included
+formula_interactions <- as.formula(paste("values ~ syllable* (", paste(predictors, collapse = "+"), ")"))
+formula_interactions
+
+comp_tar_longer_id_a_penn_cleaned <- na.omit(comp_tar_longer_id_a_penn_cleaned)
+
+subset_fit <- leaps::regsubsets(formula_interactions, data = comp_tar_longer_id_a_penn_cleaned, nbest = 1, nvmax = 15,really.big=T)
+
+# Perform subset selection allowing other variables to vary
+subset_summary <- summary(subset_fit)
+subset_summary
+
+# Print summary statistics
+subset_summary$adjr2
+subset_summary$cp
+subset_summary$bic
+
+# Choose a model based on BIC
+selected_model <- which.min(subset_summary$bic)
+subset_summary$which[selected_model, ]
+
+m1<-lm(proportion_o_looks~(.)^2,data=full_data_exp1)
+summary(m1)
+
+included_predictors <- names(subset_summary$which[selected_model, ][subset_summary$which[selected_model, ] & names(subset_summary$which[selected_model, ]) != "(Intercept)"])
+
+formula_str <- "values ~"
+formula_str <- paste(formula_str, paste(included_predictors, collapse = " + "), sep = "")
+formula_str
+
+formula_str <- gsub("Anti-penultimate", "", formula_str, perl = TRUE)
+formula_str <- gsub("1", "", formula_str, perl = TRUE)
+formula_str <- gsub("2", "", formula_str, perl = TRUE)
+formula_str <- gsub("3", "", formula_str, perl = TRUE)
+model_formula <- as.formula(formula_str)
+model_formula
+
+model_lm <- lm(model_formula, data = comp_tar_longer_id_a_penn_cleaned)
+model_lm
+# Display the summary of the model
+summary(model_lm)
+check_model(m1)
+check_model(model_lm)
+```
+
