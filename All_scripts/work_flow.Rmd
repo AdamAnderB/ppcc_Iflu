@@ -510,7 +510,7 @@ all_data_cleaned_fr_part<-all_data_cleaned_fr%>%filter(median_frame_rate>5)
 length(unique(all_data_cleaned_fr_part))
 length(unique(all_data_cleaned_fr))
 ```
-```{r}
+```{r, warning=FALSE}
 ets_exp1_all_agg<-s_exp1_data_all%>%
   group_by(stress_play,time_rounded)%>%
   summarise(mean_target_looks=mean(target_looks),
@@ -611,6 +611,78 @@ combined_plot <- plot_grid(plot1, plot2, ncol = 1)+
 combined_plot
 
 ggsave("../visuals/pen_vs_anti_pen.jpeg", plot = combined_plot, width = 6, height = 8, dpi = 300)
+```
+
+```{r, warning=FALSE}
+columns_to_center <- c("dprime_battery_up_dur", "dprime_battery_up_formants", 
+                       "dprime_battery_up_ptich", "dprime_battery_up_risetime", 
+                       "mean_working_memory", "lextale_score", "italian_lextale_score", 
+                       "autism_score")
+
+ets_exp1_all_agg_id<-s_exp1_data_all%>%
+  left_join(battery_agg_wider_simp)%>%
+  left_join(digit_cleaned_simp)%>%
+  left_join(lextale_agg_cleaned_simp)%>%
+  left_join(italian_lextale_agg_cleaned_simp)%>%
+  left_join(autism_cleaned)%>%
+  mutate(across(all_of(columns_to_center), ~ . - mean(.), .names = "centered_{.col}")) %>%
+  mutate(across(all_of(columns_to_center), 
+                ~ ifelse(. > mean(.), "above_mean", "below_mean"), 
+                .names = "{.col}_category"))
+  
+summarize_and_plot <- function(data, group_var) {
+  # Summarize the data
+  summarized_data <- data %>%
+    group_by(stress_play, time_rounded, participant.private.id, .data[[group_var]]) %>%
+    summarise(mean_target_looks = mean(target_looks, na.rm = TRUE),
+              mean_competitor_looks = mean(competitor_looks, na.rm = TRUE),
+              mean_dist1_looks = mean(dist1_looks, na.rm = TRUE),
+              mean_dist2_looks = mean(dist2_looks, na.rm = TRUE)) %>%
+    ungroup()%>%
+    pivot_longer(cols=c(mean_target_looks:mean_dist2_looks),names_to = "names",values_to="values")%>%
+    filter(time_rounded<699)
+  
+  # Create the plot for Penultimate stress play
+  plot1 <- summarized_data %>%
+    filter(stress_play == "Penultimate") %>%
+    ggplot(aes(x = time_rounded, y = values, color = .data[[group_var]], group = interaction(.data[[group_var]],names,participant.private.id,stress_play),alpha=.05)) +
+    geom_line()+
+    scale_y_continuous(breaks = seq(0, 1, by = 0.25), labels = seq(0, 1, by = 0.25)) +
+    scale_x_continuous(breaks = seq(min(data$time_rounded, na.rm = TRUE), 
+                                    max(data$time_rounded, na.rm = TRUE), by = 200)) +
+    theme_minimal() +
+    labs(x = NULL, y = "", color = group_var) +
+    guides(color = guide_legend(title = group_var)) +
+    ggtitle(paste("Anti-penultimate -", group_var))+
+    facet_grid(.~names)
+  
+  # Create the plot for Anti-penultimate stress play
+  plot2 <- summarized_data %>%
+    filter(stress_play == "Anti-penultimate") %>%
+    ggplot(aes(x = time_rounded, y = values, color = .data[[group_var]], group = interaction(.data[[group_var]],names,participant.private.id,stress_play),alpha=.05)) +
+    geom_line()+
+    scale_y_continuous(breaks = seq(0, 1, by = 0.25), labels = seq(0, 1, by = 0.25)) +
+    scale_x_continuous(breaks = seq(min(data$time_rounded, na.rm = TRUE), 
+                                    max(data$time_rounded, na.rm = TRUE), by = 200)) +
+    theme_minimal() +
+    labs(x = NULL, y = "", color = group_var) +
+    guides(color = guide_legend(title = group_var)) +
+    ggtitle(paste("Anti-penultimate -", group_var))+
+    facet_grid(.~names)
+  
+  combined_plot <- plot_grid(plot1, plot2, ncol = 1) +
+    draw_label(paste("Antepenultimate (bottom) and Penultimate (top) items proportion of looks by", group_var),
+               x = 0.02, y = 0.5, angle = 90, size = 14,alpha=.5)
+  
+  return(combined_plot)
+}
+
+# Apply the function to each column in columns_to_center
+plots_list <- lapply(columns_to_center, function(col) summarize_and_plot(ets_exp1_all_agg_id, col))
+
+for (plot in plots_list) {
+  print(plot)
+}
 ```
 
 ```{r}
