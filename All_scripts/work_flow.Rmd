@@ -684,6 +684,112 @@ for (plot in plots_list) {
   print(plot)
 }
 ```
+```{r}
+
+
+summarized_data<- ets_exp1_all_agg_id%>%
+    group_by(stress_play, time_rounded, participant.private.id) %>%
+    summarise(mean_target_looks = mean(target_looks, na.rm = TRUE),
+              mean_competitor_looks = mean(competitor_looks, na.rm = TRUE),
+              mean_dist1_looks = mean(dist1_looks, na.rm = TRUE),
+              mean_dist2_looks = mean(dist2_looks, na.rm = TRUE)) %>%
+    ungroup()%>%
+    pivot_longer(cols=c(mean_target_looks:mean_dist2_looks),names_to = "names",values_to="values")
+
+summarized_data_penn<-summarized_data%>%
+  filter(stress_play == "Penultimate")
+
+summarized_data_apenn<-summarized_data%>%
+  filter(stress_play != "Penultimate")
+
+
+plot1<-ets_exp1_all_agg%>%
+  filter(stress_play == "Penultimate") %>%
+  ggplot(aes()) +
+  geom_line(data=summarized_data_penn,aes(x = time_rounded, y = values,group = interaction(names,participant.private.id,stress_play),color=names),alpha=.8,size=.08)+
+  geom_text(data=df_1,aes(label=labels,x = time_rounded, y = values),
+            family = "Arial", size = 4, fontface = "bold")+
+  geom_point(aes(x = time_rounded, y = values, color = names)) +
+  geom_smooth(aes(x = time_rounded, y = values, color = names),se=FALSE)+
+  scale_y_continuous(breaks=seq(0, 1, by = .25),
+                     labels=seq(0, 1, by = .25))+
+  scale_x_continuous(
+    breaks = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    labels = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    minor_breaks = c(0,200,201, 396, 566, 699,800), 
+    position = "bottom")+
+  theme_minimal() +
+  theme(
+    axis.text.x.top = element_text(color = "black"),
+    axis.text.x = element_text(color = "black"),
+    panel.grid.major.x = element_line(color = "grey", size = 0.1),
+    panel.grid.minor.x = element_line(linetype = "dotted", color = "black", size = 0.5),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_line(color = "grey", size = 0.1),
+    legend.position = c(0.1, 0.9),
+    legend.justification = c(0, 1),
+    legend.background = element_rect(fill = "white", colour = "black"))+
+  labs(x = NULL,y= "") +
+  guides(color = guide_legend(title = "Looks to:"))+
+  scale_color_manual(
+    values = c("mean_target_looks" = "#c41230", "mean_competitor_looks" = "#007bc0", 
+               "mean_dist1_looks" = "#A7A7A9", "mean_dist2_looks" = "#000000"),
+    labels = c("Competitor", "Distractor", "Distractor","Target")
+  )
+  
+plot2<-ets_exp1_all_agg%>%
+  filter(stress_play == "Anti-penultimate") %>%
+  ggplot(aes()) +
+  geom_line(data=summarized_data_apenn,aes(x = time_rounded, y = values,group = interaction(names,participant.private.id,stress_play),color=names),alpha=.8,size=.05)+
+  geom_text(data=df_2,aes(label=labels,x = time_rounded, y = values),
+            family = "Arial", size = 4, fontface = "bold")+
+  geom_point(aes(x = time_rounded, y = values, color = names)) +
+  geom_smooth(aes(x = time_rounded, y = values, color = names),se=FALSE)+
+  scale_y_continuous(breaks=seq(0, 1, by = .25),
+                     labels=seq(0, 1, by = .25))+
+  scale_x_continuous(
+    breaks = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    labels = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    minor_breaks = c(0,200,201, 499, 566, 669,800),
+    position = "bottom")+
+  theme_minimal() +
+  theme(
+    axis.text.x.top = element_text(color = "black"),
+    axis.text.x = element_blank(),
+    panel.grid.major.x = element_line(color = "grey", size = 0.1),
+    panel.grid.minor.x = element_line(linetype = "dotted", color = "black", size = 0.5),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_line(color = "grey", size = 0.1),
+    legend.position = "none",
+    legend.justification = c(0, 1),
+    legend.background = element_rect(fill = "white", colour = "black"))+
+  labs(x = NULL,y= "") +
+  guides(color = guide_legend(title = "Looks to:"))+
+  scale_color_manual(
+    values = c("mean_target_looks" = "#c41230", "mean_competitor_looks" = "#007bc0", 
+               "mean_dist1_looks" = "#A7A7A9", "mean_dist2_looks" = "#000000"),
+    labels = c("Competitor", "Distractor", "Distractor","Target")
+  )+
+  scale_fill_manual(
+    values = c("mean_target_looks" = "#c41230", "mean_competitor_looks" = "#007bc0", 
+               "mean_dist1_looks" = "#A7A7A9", "mean_dist2_looks" = "#000000"),
+    labels = c("Competitor", "Distractor", "Distractor","Target")
+  )
+plot1
+plot2
+
+combined_plot <- plot_grid(plot1, plot2, ncol = 1)+
+  draw_label("Antepenultimate (bottom) and penultimate (top) items proportion of looks", x = 0.02, y = 0.5, angle = 90, size = 14)
+combined_plot
+
+ggsave("../visuals/pen_vs_anti_pen_id.jpeg", plot = combined_plot, width = 6, height = 8, dpi = 300)
+
+```
+
 
 ```{r}
 
