@@ -182,9 +182,18 @@ battery_agg_wider<-battery_agg%>%
 battery_agg_wider_simp<-battery_agg_wider
 ggpairs(battery_agg_wider_simp%>%select(!participant.private.id))
 
+
+initial_participants <- battery_agg_wider_simp$participant.private.id
+
+
 battery_agg_wider_simp<-battery_agg_wider_simp%>%filter(participant.private.id%in%battery_cleaned_part_agg_filtered$participant.private.id)
-  
+
+
 length(unique(battery_agg_wider_simp$participant.private.id))
+
+removed_participants <- setdiff(initial_participants, battery_agg_wider_simp$participant.private.id)
+
+removed_participants
 ```
 
 #digit span
@@ -677,7 +686,7 @@ summarize_and_plot <- function(data, group_var) {
   return(combined_plot)
 }
 
-# Apply the function to each column in columns_to_center
+
 plots_list <- lapply(columns_to_center, function(col) summarize_and_plot(ets_exp1_all_agg_id, col))
 
 for (plot in plots_list) {
@@ -706,8 +715,8 @@ summarized_data_apenn<-summarized_data%>%
 plot1<-ets_exp1_all_agg%>%
   filter(stress_play == "Penultimate") %>%
   ggplot(aes()) +
-  geom_line(data=summarized_data_penn,aes(x = time_rounded, y = values,group = interaction(names,participant.private.id,stress_play),color=names),alpha=.8,size=.08)+
-  geom_text(data=df_1,aes(label=labels,x = time_rounded, y = values),
+  geom_line(data=summarized_data_penn,aes(x = time_rounded, y = values,group = interaction(names,participant.private.id,stress_play),color=names),alpha=.8,size=.0)+
+  geom_text(data=df_2,aes(label=labels,x = time_rounded, y = values),
             family = "Arial", size = 4, fontface = "bold")+
   geom_point(aes(x = time_rounded, y = values, color = names)) +
   geom_smooth(aes(x = time_rounded, y = values, color = names),se=FALSE)+
@@ -718,17 +727,17 @@ plot1<-ets_exp1_all_agg%>%
                  max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
     labels = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
                  max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
-    minor_breaks = c(0,200,201, 396, 566, 699,800), 
+    minor_breaks = c(0,200,201, 499, 566, 669,800),
     position = "bottom")+
   theme_minimal() +
   theme(
     axis.text.x.top = element_text(color = "black"),
-    axis.text.x = element_text(color = "black"),
+    axis.text.x = element_blank(),
     panel.grid.major.x = element_line(color = "grey", size = 0.1),
     panel.grid.minor.x = element_line(linetype = "dotted", color = "black", size = 0.5),
     panel.grid.minor.y = element_blank(),
     panel.grid.major.y = element_line(color = "grey", size = 0.1),
-    legend.position = c(0.1, 0.9),
+    legend.position = "none",
     legend.justification = c(0, 1),
     legend.background = element_rect(fill = "white", colour = "black"))+
   labs(x = NULL,y= "") +
@@ -1420,6 +1429,7 @@ plot<-ggplot(long_data, aes(x = measure, y = value)) +
 plot
 ggsave("../visuals/plot_raw_task.jpeg", plot = plot , width = 10, height = 5, dpi = 300)
 ```
+
 ```{r}
 
 fit_models_acoustic_id <- function(data) {
@@ -1548,7 +1558,6 @@ print(result_pp_data_3$plot)
 ```
 
 ```{r}
-# Install and load ggtext if not already installed
 library(ggtext)
 
 # Define variables
@@ -1595,7 +1604,7 @@ all_coefs <- all_coefs %>%
            TRUE ~ 2
          ))
 
-# Update term names for better readability and bold acoustic terms
+# Update term names for better readability
 all_coefs <- all_coefs %>%
   mutate(old_term = term) %>%
   mutate(term = str_replace_all(term, "1", "")) %>%
@@ -1610,8 +1619,7 @@ all_coefs <- all_coefs %>%
   mutate(term = str_replace_all(term, "dprime", "")) %>%
   mutate(term = str_replace_all(term, "autism score", "ASDQ")) %>%
   mutate(term = str_replace_all(term, "tilt", "spectral tilt")) %>%
-  mutate(term = str_replace_all(term, "(battery d') dur", "(battery d') duration")) %>%
-  mutate(term = ifelse(old_term %in% acoustic_vars, paste0("**", term, "**"), term))
+  mutate(term = str_replace_all(term, "(battery d') dur", "(battery d') duration"))
 
 # Define the order of terms
 ordered_terms <- all_coefs %>%
@@ -1625,7 +1633,7 @@ all_coefs$term <- factor(all_coefs$term, levels = ordered_terms)
 
 tidy_combined$term <- factor(tidy_combined$term, levels = ordered_terms_order)
 
-View(all_coefs)
+
 # Function to create coefficient plot with confidence intervals and significance markers
 create_coef_plot <- function(coef_df, model_label, remove_y_labels = FALSE) {
   plot <- ggplot(coef_df, aes(x = Estimate, y = term, color = model_color)) +
@@ -1660,6 +1668,7 @@ library(caret)
 library(randomForest)
 library(pdp)
 library(gridExtra)
+
 conflicts_prefer(dplyr::filter)
 # Combine and preprocess data
 full_data <- rbind(ap_data_1_id, ap_data_3_id, pp_data_1_id, pp_data_3_id)
@@ -1807,6 +1816,7 @@ print(results2)
 predictors(results2)
 plot(results2, type = c("g", "o"))
 ```
+
 ```{r}
 
 # Generate PDP for 'duration2'
