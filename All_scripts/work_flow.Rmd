@@ -694,8 +694,6 @@ for (plot in plots_list) {
 }
 ```
 ```{r}
-
-
 summarized_data<- ets_exp1_all_agg_id%>%
     group_by(stress_play, time_rounded, participant.private.id) %>%
     summarise(mean_target_looks = mean(target_looks, na.rm = TRUE),
@@ -715,8 +713,8 @@ summarized_data_apenn<-summarized_data%>%
 plot1<-ets_exp1_all_agg%>%
   filter(stress_play == "Penultimate") %>%
   ggplot(aes()) +
-  geom_line(data=summarized_data_penn,aes(x = time_rounded, y = values,group = interaction(names,participant.private.id,stress_play),color=names),alpha=.8,size=.0)+
-  geom_text(data=df_2,aes(label=labels,x = time_rounded, y = values),
+  geom_line(data=summarized_data_penn,aes(x = time_rounded, y = values,group = interaction(names,participant.private.id,stress_play),color=names),alpha=.8,size=.05)+
+  geom_text(data=df_1,aes(label=labels,x = time_rounded, y = values),
             family = "Arial", size = 4, fontface = "bold")+
   geom_point(aes(x = time_rounded, y = values, color = names)) +
   geom_smooth(aes(x = time_rounded, y = values, color = names),se=FALSE)+
@@ -727,12 +725,12 @@ plot1<-ets_exp1_all_agg%>%
                  max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
     labels = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
                  max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
-    minor_breaks = c(0,200,201, 499, 566, 669,800),
+    minor_breaks = c(0,200,201, 396, 566, 699,800), 
     position = "bottom")+
   theme_minimal() +
   theme(
     axis.text.x.top = element_text(color = "black"),
-    axis.text.x = element_blank(),
+    axis.text.x = element_text(color = "black"),
     panel.grid.major.x = element_line(color = "grey", size = 0.1),
     panel.grid.minor.x = element_line(linetype = "dotted", color = "black", size = 0.5),
     panel.grid.minor.y = element_blank(),
@@ -747,7 +745,8 @@ plot1<-ets_exp1_all_agg%>%
                "mean_dist1_looks" = "#A7A7A9", "mean_dist2_looks" = "#000000"),
     labels = c("Competitor", "Distractor", "Distractor","Target")
   )
-  
+
+
 plot2<-ets_exp1_all_agg%>%
   filter(stress_play == "Anti-penultimate") %>%
   ggplot(aes()) +
@@ -788,8 +787,7 @@ plot2<-ets_exp1_all_agg%>%
                "mean_dist1_looks" = "#A7A7A9", "mean_dist2_looks" = "#000000"),
     labels = c("Competitor", "Distractor", "Distractor","Target")
   )
-plot1
-plot2
+
 
 combined_plot <- plot_grid(plot1, plot2, ncol = 1)+
   draw_label("Antepenultimate (bottom) and penultimate (top) items proportion of looks", x = 0.02, y = 0.5, angle = 90, size = 14)
@@ -820,11 +818,13 @@ comp_targ<-s_exp1_data_all%>%
                               time_rounded<mean(anti_times[2],anti_times[3]) ~2,
                             stress_play=="Anti-penultimate" & time_rounded<=anti_times[3]~3))
 
+
 comp_tar_longer<-comp_targ%>%
   pivot_longer(cols=c(target_looks:dist2_looks),names_to = "names",values_to="values")%>%
   mutate(syllable=as.factor(syllable),
          stress_play=as.factor(stress_play))%>%
-  filter(names=="target_looks"|names=="competitor_looks"|names=="dist1_looks")
+  filter(names=="target_looks"|names=="competitor_looks"|names=="dist1_looks")%>%
+  filter(syllable!=0)
 
 
 contrasts(comp_tar_longer$stress_play)<-c(.5,-.5)
@@ -841,9 +841,9 @@ levels(comp_tar_longer$stress_play)
 
 comp_tar_model<-glmer(values~names*stress_play*syllable+(word_play|participant.private.id),data=comp_tar_longer,family = "binomial")
 comp_tar_model1<-glmer(values~names*stress_play*syllable+(word_play||participant.private.id),data=comp_tar_longer,family = "binomial")
-comp_tar_model2<-glmer(values~names*stress_play*syllable+(1|participant.private.id),data=comp_tar_longer,family = "binomial")
-comp_tar_model3<-glmer(values~stress_play+names*syllable+(1|participant.private.id),data=comp_tar_longer,family = "binomial")
-comp_tar_model4<-glmer(values~names+stress_play*syllable+(1|participant.private.id),data=comp_tar_longer,family = "binomial")
+comp_tar_model2<-glmer(values~names*stress_play*syllable+(1|participant.private.id)+(1|word_play),data=comp_tar_longer,family = "binomial")
+comp_tar_model3<-glmer(values~stress_play+names*syllable+(1|participant.private.id)+(1|word_play),data=comp_tar_longer,family = "binomial")
+comp_tar_model4<-glmer(values~names+stress_play*syllable+(1|participant.private.id)+(1|word_play),data=comp_tar_longer,family = "binomial")
 
 comp_tar_model1<-glmer(values~stress_play*names*syllable+(1|participant.private.id),data=comp_tar_longer,family = "binomial")
 comp_tar_model2<-glmer(values~stress_play+names*syllable+(1|participant.private.id),data=comp_tar_longer,family = "binomial")
@@ -854,22 +854,25 @@ summary(comp_tar_model)
 summary(comp_tar_model1)
 summary(comp_tar_model2)
 summary(comp_tar_model3)
-
+summary(comp_tar_model4)
 
 anova(comp_tar_model,comp_tar_model1)
 anova(comp_tar_model1,comp_tar_model2)
 anova(comp_tar_model2,comp_tar_model3)
+anova(comp_tar_model3,comp_tar_model4)
 
 
 bic_model = BIC(comp_tar_model)
 bic_model1 = BIC(comp_tar_model1)
 bic_model2 = BIC(comp_tar_model2)
 bic_model3 = BIC(comp_tar_model3)
+bic_model4 = BIC(comp_tar_model4)
 
 aic_model = AIC(comp_tar_model)
 aic_model1 = AIC(comp_tar_model1)
 aic_model2 = AIC(comp_tar_model2)
 aic_model3 = AIC(comp_tar_model3)
+aic_model4 = AIC(comp_tar_model4)
 
 bic_model
 bic_model1
@@ -887,7 +890,6 @@ aic_model3
 #analysis 1 (target vs competitor analysis)
 ```{r}
 library(broom)
-install.packages("broom.mixed")
 library(broom.mixed)
 tidy_model <- tidy(comp_tar_model3, effects = "fixed")%>%
   mutate(
@@ -931,16 +933,16 @@ colors <- c("Base_looks" = "#007bc0", "distractor_1" = "#A7A7A9",
 pen_anti_model<-ggplot(tidy_model, aes(x = estimate, y = row_number,color=factor(looks))) +
   geom_point() +
   geom_errorbarh(aes(xmin = estimate - 1.96 * std.error, xmax = estimate + 1.96 * std.error), height = 0) +
-  labs(title = , x = "Estimated Coefficients", y = "",color = "Looks to grouping") +
+  labs(title = , x = "", y = "",color = "Looks to grouping") +
   theme_minimal()+
   geom_vline(xintercept = 0,color = "#007bc0")+
   scale_y_continuous(breaks = tidy_model$row_number, labels = tidy_model$term)+
   scale_color_manual(
-    values = c( "Base_looks" = "#007bc0", "distractor_1" = "#A7A7A9", 
-                "distractor_2" = "#000000","target" = "#c41230"),
+    values = c( "Base_looks" = "#007bc0", "distractor_2" = "#A7A7A9", 
+                "distractor_1" = "#000000","target" = "#c41230"),
     labels = c( "Base", "Distractor 1", "Distractor 2","Target")
   )+
-  annotate("rect", xmin = -2.7, xmax = -1.45, ymin = -1.5, ymax = 14.5, fill = "white",color="grey") +
+  annotate("rect", xmin = -4, xmax = -1.45, ymin = -1.5, ymax = 10.5, fill = "white",color="grey") +
   geom_text(aes(y = row_number,x=-1.5, label = term, color = factor(looks)),hjust = 1, size = 4,angle=40,show.legend = FALSE)+
   xlim(-2.7, 1)+
   coord_flip()+
@@ -953,12 +955,41 @@ pen_anti_model<-ggplot(tidy_model, aes(x = estimate, y = row_number,color=factor
         panel.border = element_blank(),
         legend.position = "bottom")+
   scale_x_continuous(breaks=seq(-1, 1, by = .5))+
-  geom_text(aes(y = 1,x=-2.5, label = "Terms"),color = "black",hjust = 1, size = 5,angle=0,show.legend = FALSE)+
+  geom_text(aes(y = 1,x=-3.5, label = "Terms"),color = "black",hjust = 1, size = 5,angle=0,show.legend = FALSE)+
     geom_text(aes(y = row_number, x = -1.2, label = Significance), hjust = 0, vjust = .5,angle=90, color = "black", show.legend = FALSE)
 
 pen_anti_model
-#ggsave("../visuals/pen_vs_anti_pen_model.jpeg", plot = pen_anti_model, width = 10, height = 6.6, dpi = 300)
+ggsave("../visuals/pen_vs_anti_pen_model.jpeg", plot = pen_anti_model, width = 10, height = 6.6, dpi = 300)
+
+combined_plot_2 <- plot_grid(plot1,plot2, pen_anti_model, ncol = 1,rel_heights = c(2,2,2))+
+  draw_label("Estimated Coefficients                              Antepenultimate                         Penultimate ", x = 0.02, y = 0.5, angle = 90, size = 14)
+combined_plot_2
+ggsave("../visuals/pen_vs_anti_pen_id_combo.jpeg", plot = combined_plot_2, width = 6, height = 10, dpi = 300)
+
 ```
+```{R}
+comp_tar_longer_example_fixations<-comp_targ%>%
+  pivot_longer(cols=c(target_looks:dist2_looks),names_to = "names",values_to="values")%>%
+  mutate(syllable=as.factor(syllable),
+         stress_play=as.factor(stress_play))%>%
+  filter(names=="target_looks"|names=="competitor_looks"|names=="dist1_looks")
+
+View(comp_tar_longer_example_fixations)
+
+
+filtered_data_proof <- comp_tar_longer_example_fixations %>%
+  filter(x_pred_normalised <= 0.5 & x_pred_normalised >= -0.5 & 
+         y_pred_normalised <= 0.5 & y_pred_normalised >= -0.5) %>%
+  filter(!(x_pred_normalised > -0.01 & x_pred_normalised < 0.01 | 
+           y_pred_normalised > -0.01 & y_pred_normalised < 0.01))
+
+# Create the plot
+proof <- ggplot(filtered_data_proof, aes(x = x_pred_normalised, y = y_pred_normalised,color=syllable)) +
+  geom_point(size = 1, alpha = 1)
+
+ggMarginal(proof, type = "density", groupColour = TRUE)
+```
+
 #analysis 2 (target distributional bias)
 ```{r}
 tar_longer<-comp_tar_longer%>%
