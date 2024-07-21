@@ -25,6 +25,8 @@ library(lmerTest)
 library(caret)
 library(leaps)
 library(glmnet)
+library(lattice)
+library(ltm)
 ```
 
 ```{r}
@@ -305,8 +307,8 @@ lextale_agg<-lextale_tidy%>%
   mutate(
     hit = if_else(response == "word" & correct == 1, 1, 0),
     miss = if_else(response == "word" & correct == 0, 1, 0),
-    f_a = if_else(response == "non" & correct == 1, 1, 0),
-    c_r = if_else(response == "non" & correct == 0, 1, 0))%>%
+    f_a = if_else(response == "non" & correct == 0, 1, 0),
+    c_r = if_else(response == "non" & correct == 1, 1, 0))%>%
   group_by(participant.private.id) %>%
   summarize(
     score=mean(correct)+.5,
@@ -369,8 +371,8 @@ italian_lextale_agg<-italian_lextale_tidy%>%
   mutate(
     hit = if_else(response == "word" & correct == 1, 1, 0),
     miss = if_else(response == "word" & correct == 0, 1, 0),
-    f_a = if_else(response == "non" & correct == 1, 1, 0),
-    c_r = if_else(response == "non" & correct == 0, 1, 0))%>%
+    f_a = if_else(response == "non" & correct == 0, 1, 0),
+    c_r = if_else(response == "non" & correct == 1, 1, 0))%>%
   group_by(participant.private.id) %>%
   summarize(
     score=mean(correct)+.5,
@@ -990,16 +992,13 @@ contrasts(comp_tar_longer$stress_play)
 levels(comp_tar_longer$stress_play)<-c("Anti-penultimate","Penultimate")
 levels(comp_tar_longer$stress_play)
 
+##commented out ones were run originally but take a long time and did not converge so we have commented them out to make rerunning our analysis more time effective.
+
 #comp_tar_model<-glmer(values~names*stress_play*syllable+(word_play|participant.private.id),data=comp_tar_longer,family = "binomial")
 #comp_tar_model1<-glmer(values~names*stress_play*syllable+(word_play||participant.private.id),data=comp_tar_longer,family = "binomial")
 comp_tar_model2<-glmer(values~names*stress_play*syllable+(1|participant.private.id)+(1|word_play),data=comp_tar_longer,family = "binomial")
 comp_tar_model3<-glmer(values~stress_play+names*syllable+(1|participant.private.id)+(1|word_play),data=comp_tar_longer,family = "binomial")
 comp_tar_model4<-glmer(values~names+stress_play*syllable+(1|participant.private.id)+(1|word_play),data=comp_tar_longer,family = "binomial")
-
-#comp_tar_model1<-glmer(values~stress_play*names*syllable+(1|participant.private.id),data=comp_tar_longer,family = "binomial")
-#comp_tar_model2<-glmer(values~stress_play+names*syllable+(1|participant.private.id),data=comp_tar_longer,family = "binomial")
-#comp_tar_model3<-glmer(values~stress_play+names+syllable+(1|participant.private.id),data=comp_tar_longer,family = "binomial")
-#comp_tar_model4<-glmer(values~stress_play*syllable+names+(1|participant.private.id),data=comp_tar_longer,family = "binomial")
 
 #summary(comp_tar_model)
 #summary(comp_tar_model1)
@@ -1008,7 +1007,7 @@ summary(comp_tar_model3)
 summary(comp_tar_model4)
 
 #anova(comp_tar_model,comp_tar_model1)
-anova(comp_tar_model1,comp_tar_model2)
+#anova(comp_tar_model1,comp_tar_model2)
 anova(comp_tar_model2,comp_tar_model3)
 anova(comp_tar_model3,comp_tar_model4)
 
@@ -1162,20 +1161,21 @@ proof <- ggplot(filtered_data_proof, aes(x = x_pred_normalised, y = y_pred_norma
   scale_color_gradientn(colors = c("blue", "yellow", "red")) +  # Use gradient colors for density
   theme_minimal()+facet_grid(stress_play~time_rounded,scales="free")
 proof
-ggMarginal(proof, type = "density", groupColour = TRUE)
 ```
 
 #analysis 2 (target distributional bias)
-```{r}
+```{r,warning=FALSE}
 tar_longer<-comp_tar_longer%>%
   filter(names=="target_looks")%>%
-  group_by(word_play,stress_play,syllable)%>%
+  group_by(word_play,stress_play,syllable,participant.private.id)%>%
   summarize(tar_prop_o_looks=mean(values))%>%
-  filter(syllable==c(2,3))%>%ungroup()
-
-
-tar_ana1<-lme4::lmer(tar_prop_o_looks~stress_play*syllable+(1|word_play),data=tar_longer)
-tar_ana2<-lme4::lmer(tar_prop_o_looks~stress_play+syllable+(1|word_play),data=tar_longer)
+  mutate(as.factor(syllable))%>%
+  filter(syllable!=c(0,1))
+  
+levels(tar_longer$syllable)
+library(lmerTest)
+tar_ana1<-lmerTest::lmer(tar_prop_o_looks~stress_play+(syllable|word_play)+(1|participant.private.id),data=tar_longer)
+tar_ana2<-lmerTest::lmer(tar_prop_o_looks~stress_play+(1|word_play)+(1|participant.private.id),data=tar_longer)
 
 summary(tar_ana1)
 summary(tar_ana2)
@@ -1185,14 +1185,11 @@ bic_tar_ana2 = BIC(tar_ana2)
 
 bic_tar_ana1 
 bic_tar_ana2
-
 #no significant results here- no bias
 ```
 
 ########analysis 3 (acoustics)
 ```{r}
-acoustic_data<-read.csv("acoustic_data_ppcc.csv")
-
 aco_agg<-acoustic_data%>%
   group_by(stress,vowel)%>%
   na.omit()%>%
@@ -1200,7 +1197,7 @@ aco_agg<-acoustic_data%>%
             mean_amplitude=mean(mean_amplitude),
             mean_dur=mean(duration)*1000,
             mean_tilt=mean(mean_tilt))
-View(aco_agg)
+
 aco_agg_2<-acoustic_data%>%
   summarize(mean_pitch=mean(mean_pitch),
             mean_amplitude=mean(mean_amplitude),
@@ -1574,7 +1571,7 @@ summary_anti_penultimate$plot
 
 ```{r message=FALSE, warning=FALSE, paged.print=FALSE}
 library(conflicted)
-parts_kept<-ets_exp1_all_agg_part_wider%>%ungroup%>%select(participant.private.id)%>%unique()%>%count()
+#parts_kept<-ets_exp1_all_agg_part_wider%>%ungroup%>%select(participant.private.id)%>%unique()%>%count()
 #write.csv(ets_exp1_all_agg_part_wider, "../../ppcc_iflu_data/ets_exp1_all_agg_part_wider.csv")
 
 
@@ -1867,7 +1864,19 @@ plot
 
 ggsave("../visuals/extended_analysis.jpeg", plot = plot , width = 8, height = 6, dpi = 300)
 ```
+```{r}
 
+r_version <- R.version
+cat("R version:", r_version$version.string, "\n")
+
+# bibtex format
+r_citation <- citation()
+bibtex_citation <- toBibtex(r_citation)
+cat(bibtex_citation)
+
+
+
+```
 ```{r}
 library(conflicted)
 library(caret)
@@ -1879,7 +1888,7 @@ conflicts_prefer(dplyr::filter)
 # Combine and preprocess data
 full_data <- rbind(ap_data_1_id, ap_data_3_id, pp_data_1_id, pp_data_3_id)
 
-View(ap_data_1_id)
+
 full_data_clean <- full_data %>%
   select(stress_play, syllable, dprime_battery_up_dur, dprime_battery_up_formants, dprime_battery_up_ptich, dprime_battery_up_risetime,
          lextale_score, italian_lextale_score, mean_working_memory, autism_score)%>%
@@ -1889,7 +1898,6 @@ full_data_clean <- full_data %>%
   select(-c(stress_play, syllable))%>%
   na.omit()
 
-View(full_data_clean)
 # Standardize the data
 preProc <- preProcess(full_data_clean[, -ncol(full_data_clean)], method = c("center", "scale"))
 data_standardized <- predict(preProc, full_data_clean)
