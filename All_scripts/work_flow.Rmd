@@ -1190,6 +1190,8 @@ bic_tar_ana2
 
 ########analysis 3 (acoustics)
 ```{r}
+acoustic_data <- read.csv(file.path(target_dir, "acoustic_data.csv"))
+
 aco_agg<-acoustic_data%>%
   group_by(stress,vowel)%>%
   na.omit()%>%
@@ -1198,21 +1200,67 @@ aco_agg<-acoustic_data%>%
             mean_dur=mean(duration)*1000,
             mean_tilt=mean(mean_tilt))
 
-aco_agg_2<-acoustic_data%>%
-  summarize(mean_pitch=mean(mean_pitch),
-            mean_amplitude=mean(mean_amplitude),
-            mean_dur=mean(duration)*1000,
-            mean_tilt=mean(mean_tilt),
-            mean_sd=sd(duration)*1000)
-
 acoustic_data<-acoustic_data%>%
  mutate(
-    stress_play = ifelse(stress == "antipenultimate", "Anti-penultimate", "Penultimate"),
-    syllable = ifelse(vowel == "v1", 1, 3),
+    stress_play = ifelse(stress == "antipenultimate", "Antepenultimate", "Penultimate"),
+    syllable = ifelse(vowel == "v1", "Vowel 1", "Vowel 2"),
     syllable=as.factor(syllable),
     word=tolower(word))%>%
   select(-X)
 
+acoustic_data_longer<-acoustic_data%>%
+  select(stress_play,syllable,mean_amplitude,mean_pitch,duration,mean_tilt,word)%>%
+  pivot_longer(cols=c(mean_amplitude,mean_pitch,duration,mean_tilt),
+               names_to = "type",
+               values_to = "values")%>%
+  mutate(base = case_when(
+    str_starts(word, "c") ~ str_sub(word, 1, 4), # Remove last 3 characters if starts with 'c'
+    TRUE ~ str_sub(word, 1, 3)                    # Remove last 4 characters otherwise
+  ))
+
+
+acoustic_data_longer$type <- factor(acoustic_data_longer$type,
+                                    levels = c("mean_amplitude", "mean_pitch", 
+                                               "duration", "mean_tilt"),
+                                    labels = c("Amplitude (dB)", "Pitch (Hz)", 
+                                               "Duration (ms)", "Spectral Tilt"))
+
+raw_acoustics<-acoustic_data_longer %>%
+  ggplot() +
+  # Add a white rectangle covering the middle part of the x-axis
+  geom_rect(aes(xmin = 1, xmax = 2, ymin = -Inf, ymax = Inf), fill = "white") +
+  geom_point(aes(x = syllable, y = values, color = stress_play), shape = 95, alpha = 0.8, size = 3, position = position_jitterdodge(jitter.width = 0.0, dodge.width = 0.0)) +
+  geom_half_violin(aes(x = syllable, y = values, color = stress_play), 
+                   alpha = 0.5, side = "l", position = position_nudge(x = -0.), 
+                   data = acoustic_data_longer %>% filter(stress_play == "Penultimate")) +
+  geom_half_violin(aes(x = syllable, y = values, color = stress_play), 
+                   alpha = 0.5, side = "r", position = position_nudge(x = 0.), 
+                   data = acoustic_data_longer %>% filter(stress_play == "Antepenultimate")) +
+  geom_line(aes(x = syllable, y = values, group = interaction(base, stress_play, type, type), color = stress_play,se=FALSE), 
+            alpha = 0.5, size = 0.1) +
+  geom_smooth(aes(x = syllable,  y = values, color = stress_play, 
+                  group = interaction(stress_play, type)), method = "lm", se = FALSE,size=1) +
+  geom_smooth(aes(x = syllable,  y = values, 
+                  group = interaction(stress_play, type)), color = "white",method = "lm", se = FALSE,size=1,linetype="dotted") +
+  facet_wrap(type~., scales = "free",strip.position = "left") +
+  theme_minimal() +
+  scale_color_manual(values = c("Antepenultimate" = "#C41230", "Penultimate" = "#000000")) +
+  theme(legend.position = "bottom")+
+  labs(title = "          Vowel 1                Vowel 2                                     Vowel 1                Vowel 2",
+       x = "", y = "",color = "Type")+
+  theme(legend.position = "bottom",
+        strip.placement = "outside",
+        strip.text = element_text(face = "bold", angle = 90),
+        strip.background = element_blank(),
+        panel.spacing = unit(1, "lines"),
+        axis.text.x = element_blank())
+
+raw_acoustics
+
+ggsave("../visuals/raw_acoustics.jpeg", plot = raw_acoustics , width = 8, height = 6, dpi = 300)  
+```
+
+```{r}
 penn_accoustic_data<-acoustic_data%>%
   filter(stress_play=="Penultimate")
 ante_penn_accoustic_data<-acoustic_data%>%
