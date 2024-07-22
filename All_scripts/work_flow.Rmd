@@ -1218,12 +1218,154 @@ acoustic_data_longer<-acoustic_data%>%
     TRUE ~ str_sub(word, 1, 3)                    # Remove last 4 characters otherwise
   ))
 
-
 acoustic_data_longer$type <- factor(acoustic_data_longer$type,
                                     levels = c("mean_amplitude", "mean_pitch", 
                                                "duration", "mean_tilt"),
                                     labels = c("Amplitude (dB)", "Pitch (Hz)", 
                                                "Duration (ms)", "Spectral Tilt"))
+acoustic_data_longer2<-acoustic_data_longer %>%
+  group_by(type) %>%
+  mutate(scaled_value = if (n() > 1) as.numeric(scale(values)) else values) %>%
+  ungroup()
+  
+acoustic_data_longer2 <- acoustic_data_longer2 %>%
+  mutate(custom_x = case_when(
+    paste(syllable, type,sep=".") == "Vowel 1.Amplitude (dB)" ~ 1,
+    paste(syllable, type,sep=".") == "Vowel 2.Amplitude (dB)" ~ 2,
+    paste(syllable, type,sep=".") == "Vowel 1.Pitch (Hz)" ~ 4,
+    paste(syllable, type,sep=".") == "Vowel 2.Pitch (Hz)" ~ 5, 
+    paste(syllable, type,sep=".") == "Vowel 1.Duration (ms)" ~ 7,
+    paste(syllable, type,sep=".") == "Vowel 2.Duration (ms)" ~ 8,
+    paste(syllable, type,sep=".") == "Vowel 1.Spectral Tilt" ~ 10, 
+    paste(syllable, type,sep=".") == "Vowel 2.Spectral Tilt" ~ 11))
+
+
+plot_line <- acoustic_data_longer2 %>%
+  ggplot(aes(x = custom_x, y = scaled_value, color = stress_play, group = word)) +
+  geom_rect(aes(xmin = 2.01, xmax = 3.99, ymin = -Inf, ymax = Inf), fill = "white",color="white") +
+  geom_rect(aes(xmin = 5.01, xmax = 6.99, ymin = -Inf, ymax = Inf), fill = "white",color="white") +
+  geom_rect(aes(xmin = 8.01, xmax = 9.99, ymin = -Inf, ymax = Inf), fill = "white",color="white") +
+  geom_rect(aes(xmin = -Inf, xmax = .99, ymin = -Inf, ymax = Inf), fill = "white",color="white") +
+  geom_rect(aes(xmin = 11.01, xmax = Inf, ymin = -Inf, ymax = Inf), fill = "white",color="white") +
+  geom_point(size = .2) +
+  geom_line(aes(group = interaction(word, stress_play)), alpha = 0.8, size = .1) +
+  facet_wrap(syllable ~ ., ncol = 1) +
+  theme_minimal() +
+  scale_color_manual(values = c("Antepenultimate" = "#C41230", "Penultimate" = "#000000")) +
+  scale_x_continuous(
+    breaks = c(1,2,4,5,7,8,10,11),
+    labels = c("Vowel 1", "Vowel 2", "Vowel 1", "Vowel 2", "Vowel 1", "Vowel 2","Vowel 1", "Vowel 2"),
+    minor_breaks = c(-1,0,1, 2,4,5,7,8,10,11),
+    expand = expansion(mult = c(.075, .06))
+  ) +
+ theme(
+    legend.position = "none",
+    strip.text = element_blank(),
+    strip.background = element_blank(),
+    panel.spacing = unit(0, "lines"),
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(angle = 0, face = "bold"),
+    panel.grid.minor.x = element_blank(), 
+    panel.grid.major.x = element_line(color = "grey80") 
+  ) +
+  labs(title = "", y = "", color = "Stress Play")
+plot_line
+
+```
+
+
+```{r}
+# Assuming acoustic_data_longer2 is your input dataset
+# Prepare the data for polygons
+acoustic_data_longer3 <- acoustic_data_longer2 %>%
+  arrange(syllable, base, stress_play, type) %>%
+  group_by(syllable, base, stress_play) %>%
+  mutate(type = as.factor(type)) %>%
+  mutate(scaled_value = as.numeric(scaled_value)) %>%
+  group_modify(~ {
+    data <- .x
+    if (nrow(data) > 0) {
+      data <- bind_rows(data, data[1,]) # Repeat the first row at the end to close the polygon
+    }
+    data
+  }) %>%
+  ungroup() %>%
+  group_by(word, syllable) %>%
+  mutate(id = row_number()) %>%
+  ungroup()
+
+# Calculate polar coordinates
+acoustic_data_longer3 <- acoustic_data_longer3 %>%
+  group_by(syllable, base, stress_play) %>%
+  mutate(
+    angle = (row_number() - 1) * (360 / n()),
+    x = sin(pi * angle / 180) * scaled_value,
+    y = cos(pi * angle / 180) * scaled_value
+  ) %>%
+  ungroup()
+
+
+# Custom coordinate system to avoid curved lines
+coord_straightpolar <- function(theta = "x", start = 0, direction = 1, clip = "on") {
+  theta <- match.arg(theta, c("x", "y"))
+  r <- if (theta == "x") "y" else "x"
+  ggproto(NULL, CoordPolar, theta = theta, r = r, start = start,
+          direction = sign(direction), clip = clip,
+          is_linear = function() TRUE)
+}
+
+
+# Circular plot with paths and custom labels
+circular_plot_path <- ggplot(acoustic_data_longer3, aes(x = id, y = scaled_value, color = stress_play, group = interaction(syllable, base, stress_play))) +
+  geom_path(size = .1, alpha = .5) +
+  geom_point(size = .2) +
+  facet_wrap(~ syllable,ncol=1) +
+  geom_text(aes(x = id, y = max(acoustic_data_longer3$scaled_value) * 1.1, label = type), size = 3, inherit.aes = FALSE) +
+  coord_straightpolar(start = 0) +
+  theme_minimal() +
+  scale_color_manual(values = c("Antepenultimate" = "#C41230", "Penultimate" = "#000000")) +
+  theme(
+    legend.position = "none",
+    strip.text = element_text(face = "bold"),
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.y = element_blank(),
+    panel.spacing = unit(5, "lines")
+  ) +
+  labs(
+    title = "",
+    x="",
+    y=""
+  )
+
+circular_plot_path
+# Circular plot with polygons
+circular_plot_polygon <- ggplot(acoustic_data_longer3, aes(x = angle, y = scaled_value,color=stress_play, group = interaction(syllable, base, stress_play))) +
+  geom_polygon(aes(fill = stress_play,color=stress_play), alpha = 0.01, size = 0.01) +
+  facet_wrap(stress_play~ syllable) +
+  coord_straightpolar(start = 0) +
+  theme_minimal() +
+  scale_fill_manual(values = c("Antepenultimate" = "#C41230", "Penultimate" = "#000000")) +
+  scale_color_manual(values = c("Antepenultimate" = "#C41230", "Penultimate" = "#000000")) +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold"),
+    axis.title.x = element_blank(),
+    axis.text.y = element_blank()
+  ) +
+  labs(
+    title = "",
+    x="",
+    y=""
+  )
+
+circular_plot_polygon
+```
+
+
+
+```{r}
 
 raw_acoustics<-acoustic_data_longer %>%
   ggplot() +
@@ -1239,25 +1381,34 @@ raw_acoustics<-acoustic_data_longer %>%
   geom_line(aes(x = syllable, y = values, group = interaction(base, stress_play, type, type), color = stress_play,se=FALSE), 
             alpha = 0.5, size = 0.1) +
   geom_smooth(aes(x = syllable,  y = values, color = stress_play, 
-                  group = interaction(stress_play, type)), method = "lm", se = FALSE,size=1) +
+                  group = interaction(stress_play, type),SE = FALSE), method = "lm",size=1) +
   geom_smooth(aes(x = syllable,  y = values, 
-                  group = interaction(stress_play, type)), color = "white",method = "lm", se = FALSE,size=1,linetype="dotted") +
-  facet_wrap(type~., scales = "free",strip.position = "left") +
+                  group = interaction(stress_play, type),SE = FALSE), color = "white",method = "lm", se = FALSE,size=1,linetype="dotted") +
+  facet_wrap(.~type, scales = "free",ncol=4,) +
   theme_minimal() +
   scale_color_manual(values = c("Antepenultimate" = "#C41230", "Penultimate" = "#000000")) +
-  theme(legend.position = "bottom")+
-  labs(title = "          Vowel 1                Vowel 2                                     Vowel 1                Vowel 2",
-       x = "", y = "",color = "Type")+
   theme(legend.position = "bottom",
-        strip.placement = "outside",
-        strip.text = element_text(face = "bold", angle = 90),
+        legend.background=element_blank())+
+  labs(title = "", x = "", y = "",color = "Stress")+
+  theme(legend.position = "top",
+        strip.placement = "inside",
+        strip.text = element_text(face = "bold", angle = 0),
         strip.background = element_blank(),
         panel.spacing = unit(1, "lines"),
-        axis.text.x = element_blank())
-
+        axis.text.x = element_blank())+
+  guides(color=guide_legend(override.aes=list(fill=NA)))
 raw_acoustics
 
-ggsave("../visuals/raw_acoustics.jpeg", plot = raw_acoustics , width = 8, height = 6, dpi = 300)  
+combined_plot <- plot_grid(
+  raw_acoustics + theme(plot.margin = unit(c(0, 0, 0, 0), "cm")),
+  plot_line + theme(plot.margin = unit(c(-1, 0, 0, 0), "cm")),
+  nrow = 2,  # Two rows
+  rel_heights = c(1, 1))
+combined_plot
+
+ggsave("../visuals/raw_acoustics.jpeg", plot = raw_acoustics , width = 8, height = 6, dpi = 300) 
+ggsave("../visuals/raw_acoustics_combined.jpeg", plot = combined_plot , width = 10, height = 8, dpi = 300) 
+#"          Vowel 1                Vowel 2                                     Vowel 1                Vowel 2"
 ```
 
 ```{r}
@@ -1610,6 +1761,8 @@ summary_penultimate <- fit_models(comp_tar_longer_id, "Penultimate")
 
 # Fit models for non-Penultimate stress
 summary_anti_penultimate <- fit_models(comp_tar_longer_id, "Anti-penultimate")
+
+
 summary_penultimate$summary
 summary_anti_penultimate$summary
 
@@ -1642,13 +1795,13 @@ long_data <- measures %>%
   mutate(measure = gsub("scaled_", "", measure))%>%
   mutate(old_term = measure) %>%
   mutate(measure = str_replace_all(measure, "_", " ")) %>%
-  mutate(measure = str_replace_all(measure, "dprime battery up", "(Battery d')")) %>%
+  mutate(measure = str_replace_all(measure, "dprime battery up", "(Battery d') \n")) %>%
   mutate(measure = str_replace_all(measure, "mean", "")) %>%
-  mutate(measure = str_replace_all(measure, "italian lextale score", "Lextale (Italian)")) %>%
-  mutate(measure = str_replace_all(measure, "lextale score", "Lextale (English)")) %>%
+  mutate(measure = str_replace_all(measure, "italian lextale score", "LexITA")) %>%
+  mutate(measure = str_replace_all(measure, "lextale score", "LexTALE")) %>%
   mutate(measure = str_replace_all(measure, "scaled", "")) %>%
   mutate(measure = str_replace_all(measure, "dprime", "")) %>%
-  mutate(measure = str_replace_all(measure, "autism score", "ASDQ")) %>%
+  mutate(measure = str_replace_all(measure, "autism score", "AQ")) %>%
   mutate(measure = str_replace_all(measure, "tilt", "spec tilt")) %>%
   mutate(measure = str_replace_all(measure, "dur", "Duration"))%>%
 mutate(measure = str_replace_all(measure, "work", "Work"))%>%
@@ -1797,10 +1950,11 @@ result_pp_data_3 <- fit_models_acoustic_id(pp_data_3_id)
 
 
 # Print summaries and display plots
-print(result_ap_data_1$summary)
 print(result_pp_data_1$summary)
-print(result_ap_data_3$summary)
+print(result_ap_data_1$summary)
 print(result_pp_data_3$summary)
+print(result_ap_data_3$summary)
+
 
 print(result_ap_data_1$plot)
 print(result_pp_data_1$plot)
@@ -1864,11 +2018,11 @@ all_coefs <- all_coefs %>%
   mutate(term = str_replace_all(term, "_", " ")) %>%
   mutate(term = str_replace_all(term, "dprime battery up", "(battery d')")) %>%
   mutate(term = str_replace_all(term, "mean", "")) %>%
-  mutate(term = str_replace_all(term, "italian lextale score", "lextale (Italian)")) %>%
-  mutate(term = str_replace_all(term, "lextale score", "lextale (English)")) %>%
+  mutate(term = str_replace_all(term, "italian lextale score", "lexITA")) %>%
+  mutate(term = str_replace_all(term, "lextale score", "lexTALE")) %>%
   mutate(term = str_replace_all(term, "scaled", "")) %>%
   mutate(term = str_replace_all(term, "dprime", "")) %>%
-  mutate(term = str_replace_all(term, "autism score", "ASDQ")) %>%
+  mutate(term = str_replace_all(term, "autism score", "AQ")) %>%
   mutate(term = str_replace_all(term, "tilt", "spectral tilt")) %>%
   mutate(term = str_replace_all(term, "(battery d') dur", "(battery d') duration"))
 
