@@ -1461,7 +1461,6 @@ t_test_results_ante_penn
 ```
 
 
-
 #analysis 3 target fixation analysis 
 ```{r}
 #max models
@@ -2067,19 +2066,6 @@ plot
 ggsave("../visuals/extended_analysis.jpeg", plot = plot , width = 8, height = 6, dpi = 300)
 ```
 ```{r}
-
-r_version <- R.version
-cat("R version:", r_version$version.string, "\n")
-
-# bibtex format
-r_citation <- citation()
-bibtex_citation <- toBibtex(r_citation)
-cat(bibtex_citation)
-
-
-
-```
-```{r}
 library(conflicted)
 library(caret)
 library(randomForest)
@@ -2355,8 +2341,17 @@ print(knn_confusion_plot2)
 
 # Random Forest variable importance for second dataset
 print(rf_importance_plot2)
+```
+
+```{r}
+r_version <- R.version
+cat("R version:", r_version$version.string, "\n")
+
+# bibtex format
+r_citation <- citation()
+bibtex_citation <- toBibtex(r_citation)
+cat(bibtex_citation)
 
 
 
 ```
-
