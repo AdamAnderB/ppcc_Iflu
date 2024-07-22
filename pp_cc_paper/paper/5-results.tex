@@ -3,7 +3,14 @@
 We first compare the results of our replication study with the results of \cite{Sulpizio_McQueen_2012}'s in-person eye-tracking task. We asked four research questions in line with the original study: 1) What are the primary acoustic cues for each stress type? 2) To what extent do penultimate and antepenultimate stress words differ in the time course of word recognition? 3) Is there a bias in target fixations for penultimate stress words due to higher frequency in the lexicon? 4) To what extent do specific acoustic cues predict recognition of penultimate and antepenultimate stress words?  
 
 \subsubsection{Acoustic analysis}
-Results from our acoustic analysis can be found in Table \ref{tab:acoustics}. As a reminder, we used the same audio stimuli provided by the Sulpizio and McQueen, but we calculated the acoustic measurements using our own scripts and annotations. We found, like \cite{Sulpizio_McQueen_2012}, that all acoustic measures significantly differed between syllables except for spectral tilt in penultimate words. In penultimate words, first syllables were louder (higher amplitude), had a higher pitch (greater f0), and were shorter in duration. In contrast, for antepenultimate words, first syllables were louder, had a higher pitch, were longer in duration, and had greater spectral tilt. Thus, while our mean acoustic measurements varied somewhat from those reported in the original \cite{Sulpizio_McQueen_2012}, the overall findings were consistent: amplitude, pitch, duration, and spectral tilt are used by speakers as acoustic cues to convey lexical stress information and there are clear patterns observed given the stress type. 
+Results from our acoustic analysis can be found in Table \ref{tab:acoustics}. As a reminder, we used the same audio stimuli provided by the Sulpizio and McQueen, but we calculated the acoustic measurements using our own scripts and annotations. We found, like \cite{Sulpizio_McQueen_2012}, that all acoustic measures significantly differed between syllables except for spectral tilt in penultimate words. In penultimate words, first syllables were louder (higher amplitude), had a higher pitch (greater f0), and were shorter in duration. In contrast, for antepenultimate words, first syllables were louder, had a higher pitch, were longer in duration, and had greater spectral tilt. Thus, while our mean acoustic measurements varied somewhat from those reported in the original \cite{Sulpizio_McQueen_2012}, the overall findings were consistent: amplitude, pitch, duration, and spectral tilt are used by speakers as acoustic cues to convey lexical stress information and there are clear patterns observed given the stress type. See Figure \ref{fig:raw_acoustics} for detailed comparison across words and syllables. Showing that the largest and most apparent difference can be seen between syllables across stress types can be found between with duration (see Figure \ref{fig:raw_acoustics}) with a full interaction between first and second syllable and duration length. The difference between amplitude and pitch both go down between syllable 1 and 2 across stress types with antepenultimate words having a greater decrease.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=1\linewidth]{visuals/raw_acoustics.jpeg} % Adjust the width as needed
+  \caption{Individual syllable measurements by stress type: penultimate (black/left facing) and antepenultimate (red/right facing)  across vowel 1 (left) and vowel 2 (right)}
+  \label{fig:raw_acoustics}
+\end{figure}
 
 
 \subsubsection{Target and competitor analysis}
@@ -51,14 +58,7 @@ In the antepenultimate second syllable model, a main effect of pitch ($\delta = 
 \end{figure}
 
 \subsection{Replication summary}
-We first corroborated \cite{Sulpizio_McQueen_2012}'s acoustic results using the same stimuli but different methods. Thus, despite increasing researcher's degree of freedom \citep{Corretta2023}, we found the exact same pattern of acoustic differences between the two stress types (\ref{tab:acoustics}). However, the largest and most apparent difference can be seen between 
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=1\linewidth]{visuals/raw_acoustics.jpeg} % Adjust the width as needed
-  \caption{Model selection outcomes for penultimate and antepenultimate cue models for first and second syllable.}
-  \label{fig:raw_acoustics}
-\end{figure}
+We first corroborated \cite{Sulpizio_McQueen_2012}'s acoustic results using the same stimuli but different methods. Thus, despite increasing researcher's degree of freedom \citep{Corretta2023}, we found the exact same pattern of acoustic differences between the two stress types (\ref{tab:acoustics}).
 
 Next, in our target-competitor analysis, we corroborated \cite{Sulpizio_McQueen_2012}'s findings that looks to target are greater during the first 1.5 syllables and during second syllable across both the penultimate and antepenultimate words. However, our modeling technique also allowed us to show that distractors were already being considered less during the first syllable, which makes sense because the distractors are segmentally different than competitors and targets. The combined analysis also provides insights into the time course of word recognition across both stress-types, with the negative main effect of syllable two and the interaction betas between distractors and syllable 1.5 and 2 suggesting that the competitor is disambiguated primarily during the second syllable as the looks to competitors and distractors becomes more similar and the looks to targets are steadily increasing across syllable 1.5 and two.
 
