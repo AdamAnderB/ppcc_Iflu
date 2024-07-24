@@ -33,6 +33,7 @@ library(ltm)
 target_dir <- "../../ppcc_iflu_data/read_data"
 # Reading the data back in
 s_exp1 <- read.csv(file.path(target_dir, "s_exp1.csv"))
+#s_exp1_data_all <- read.csv(file.path(target_dir, "s_exp1_data_all.csv"))
 s_exp1_et <- read.csv(file.path(target_dir, "s_exp1_et.csv"))
 digit_span <- read.csv(file.path(target_dir, "digit_span.csv"))
 battery <- read.csv(file.path(target_dir, "battery.csv"))
@@ -646,8 +647,7 @@ s_exp1_data_all <- s_exp1_et_cleaned %>%
   group_by(participant.private.id,spreadsheet.row,stress_play)%>%
   mutate(time=time_stamp-min(time_stamp),
          time_rounded = round(time / 50) * 50)%>%
-  mutate(time_rounded=time_rounded-1000)%>%
-  mutate(time_rounded=time_rounded-200)%>%
+  mutate(time_rounded=time_rounded-1200)%>% #offset for item experiment timing
   filter(time_rounded<1000&time_rounded>=0)
 
 
@@ -663,7 +663,7 @@ all_data_cleaned_fr<-s_exp1_data_all%>%
   mutate(median_frame_rate = median(frame_rate))%>%
   filter(median_frame_rate>=frame_rate_cut_off)%>%
   mutate(time_elapsed_rounded=time_binning*round((time_elapsed)/time_binning))
-
+ 
 all_data_cleaned_fr%>%ggplot(aes(x=participant.private.id,y=median_frame_rate))+geom_point()
 all_data_cleaned_fr_part<-all_data_cleaned_fr%>%filter(median_frame_rate>5)
 length(unique(all_data_cleaned_fr_part))
@@ -1132,36 +1132,11 @@ combined_plot_2 <- plot_grid(plot1,plot2, pen_anti_model, ncol = 1,rel_heights =
   draw_label("Estimated Coefficients                                   Antepenultimate                                   Penultimate ", x = 0.02, y = 0.5, angle = 90, size = 14)
 
 combined_plot_2
-ggsave("../visuals/pen_vs_anti_pen_id_combo.jpeg", plot = combined_plot_2, width = 6, height = 10, dpi = 300)
+#ggsave("../visuals/pen_vs_anti_pen_id_combo.jpeg", plot = combined_plot_2, width = 6, height = 10, dpi = 300)
 
 ```
 
 
-```{r}
-comp_tar_longer_example_fixations<-comp_targ%>%
-  pivot_longer(cols=c(target_looks:dist2_looks),names_to = "names",values_to="values")%>%
-  mutate(syllable=as.factor(syllable),
-         stress_play=as.factor(stress_play))%>%
-  filter(names=="target_looks"|names=="competitor_looks"|names=="dist1_looks")
-
-filtered_data_proof <- comp_tar_longer_example_fixations %>%
-  filter(x_pred_normalised <= 0.5 & x_pred_normalised >= -0.5 & 
-         y_pred_normalised <= 0.5 & y_pred_normalised >= -0.5) %>%
-  filter(!(x_pred_normalised > -0.01 & x_pred_normalised < 0.01 | 
-           y_pred_normalised > -0.01 & y_pred_normalised < 0.01))
-
-# Create the plot
-proof <- ggplot(filtered_data_proof, aes(x = x_pred_normalised, y = y_pred_normalised,color=syllable)) +
-  geom_point(size = 1, alpha = 1)
-
-
-
-proof <- ggplot(filtered_data_proof, aes(x = x_pred_normalised, y = y_pred_normalised, group = interaction(as.factor(time_rounded),stress_play))) +
-  geom_pointdensity(adjust = 5, size = 1) +
-  scale_color_gradientn(colors = c("blue", "yellow", "red")) +  # Use gradient colors for density
-  theme_minimal()+facet_grid(stress_play~time_rounded,scales="free")
-proof
-```
 
 #analysis 2 (target distributional bias)
 ```{r,warning=FALSE}
@@ -1251,7 +1226,7 @@ plot_line <- acoustic_data_longer2 %>%
   geom_line(aes(group = interaction(word, stress_play)), alpha = 0.8, size = .1) +
   facet_wrap(syllable ~ ., ncol = 1) +
   theme_minimal() +
-  scale_color_manual(values = c("Antepenultimate" = "#C41230", "Penultimate" = "#000000")) +
+  scale_color_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
   scale_x_continuous(
     breaks = c(1,2,4,5,7,8,10,11),
     labels = c("Vowel 1", "Vowel 2", "Vowel 1", "Vowel 2", "Vowel 1", "Vowel 2","Vowel 1", "Vowel 2"),
@@ -1323,7 +1298,7 @@ circular_plot_path <- ggplot(acoustic_data_longer3, aes(x = id, y = scaled_value
   geom_text(aes(x = id, y = max(acoustic_data_longer3$scaled_value) * 1.1, label = type), size = 3, inherit.aes = FALSE) +
   coord_straightpolar(start = 0) +
   theme_minimal() +
-  scale_color_manual(values = c("Antepenultimate" = "#C41230", "Penultimate" = "#000000")) +
+  scale_color_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
   theme(
     legend.position = "none",
     strip.text = element_text(face = "bold"),
@@ -1346,8 +1321,8 @@ circular_plot_polygon <- ggplot(acoustic_data_longer3, aes(x = angle, y = scaled
   facet_wrap(stress_play~ syllable) +
   coord_straightpolar(start = 0) +
   theme_minimal() +
-  scale_fill_manual(values = c("Antepenultimate" = "#C41230", "Penultimate" = "#000000")) +
-  scale_color_manual(values = c("Antepenultimate" = "#C41230", "Penultimate" = "#000000")) +
+  scale_fill_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
+  scale_color_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
   theme(
     legend.position = "bottom",
     strip.text = element_text(face = "bold"),
@@ -1366,7 +1341,7 @@ circular_plot_polygon
 
 
 ```{r}
-
+library(gghalves)
 raw_acoustics<-acoustic_data_longer %>%
   ggplot() +
   # Add a white rectangle covering the middle part of the x-axis
@@ -1381,12 +1356,13 @@ raw_acoustics<-acoustic_data_longer %>%
   geom_line(aes(x = syllable, y = values, group = interaction(base, stress_play, type, type), color = stress_play,se=FALSE), 
             alpha = 0.5, size = 0.1) +
   geom_smooth(aes(x = syllable,  y = values, color = stress_play, 
-                  group = interaction(stress_play, type),SE = FALSE), method = "lm",size=1) +
+                  group = interaction(stress_play, type),fill=stress_play),alpha=.3, method = "lm",size=1,show.legend = FALSE) +
   geom_smooth(aes(x = syllable,  y = values, 
-                  group = interaction(stress_play, type),SE = FALSE), color = "white",method = "lm", se = FALSE,size=1,linetype="dotted") +
+                  group = interaction(stress_play, type),fill=stress_play),alpha=.3, color = "white",method = "lm",size=1,linetype="dotted",show.legend = FALSE) +
   facet_wrap(.~type, scales = "free",ncol=4,) +
   theme_minimal() +
-  scale_color_manual(values = c("Antepenultimate" = "#C41230", "Penultimate" = "#000000")) +
+  scale_color_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
+    scale_fill_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
   theme(legend.position = "bottom",
         legend.background=element_blank())+
   labs(title = "", x = "", y = "",color = "Stress")+
@@ -1463,6 +1439,23 @@ t_test_results_ante_penn
 
 #analysis 3 target fixation analysis 
 ```{r}
+acoustic_data <- read.csv(file.path(target_dir, "acoustic_data.csv"))
+
+aco_agg<-acoustic_data%>%
+  group_by(stress,vowel)%>%
+  na.omit()%>%
+  summarize(mean_pitch=mean(mean_pitch),
+            mean_amplitude=mean(mean_amplitude),
+            mean_dur=mean(duration)*1000,
+            mean_tilt=mean(mean_tilt))
+
+acoustic_data<-acoustic_data%>%
+ mutate(
+    stress_play = ifelse(stress == "antipenultimate", "Anti-penultimate", "Penultimate"),
+    syllable = ifelse(vowel == "v1", 1, 3),
+    syllable=as.factor(syllable),
+    word=tolower(word))%>%
+  select(-X)
 #max models
 ets_binary_analysis_syl_1<-comp_tar_longer%>%
   pivot_wider(names_from = names,values_from = values)%>%
@@ -1631,9 +1624,9 @@ analysis_3_plot <- ggplot(tidy_combined, aes(x = estimate, y = term, color = mod
   labs(title = "", x = "Estimate", y = "Term",color = "Model Type") +
   theme_minimal() +
   geom_vline(xintercept = 0, linetype = "dashed") +
-  facet_grid(. ~ syllable, labeller = labeller(syllable = custom_labels)) +
+  facet_grid(. ~ syllable, labeller = labeller(syllable = custom_labels),scales="free") +
   geom_text(aes(label = Significance, x = 1), vjust = 0.5, position = position_dodge(width = 0.5),show.legend = FALSE) +
-  scale_color_manual(values = c("Antepenultimate" = "#C41230", "Penultimate" = "#000000")) +
+  scale_color_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
   theme(legend.position = "bottom")
 # Print the plot
 analysis_3_plot 
@@ -1685,7 +1678,7 @@ fit_models <- function(data, stress_filter) {
   data_filtered <- na.omit(data_filtered)
   
   # Create the design matrix and response vector
-  x <- model.matrix(values ~ syllable * (dprime_battery_up_dur + dprime_battery_up_ptich + dprime_battery_up_risetime + dprime_battery_up_formants + lextale_score + autism_score + italian_lextale_score + lextale_score), data = data_filtered)[, -1]
+  x <- model.matrix(values ~ syllable * (dprime_battery_up_dur + dprime_battery_up_ptich + dprime_battery_up_risetime + dprime_battery_up_formants + lextale_score + autism_score + italian_lextale_score+mean_working_memory), data = data_filtered)[, -1]
   y <- data_filtered$values
   
   # Set up lambda values for LASSO regression
@@ -1812,8 +1805,8 @@ mutate(measure = str_replace_all(measure, "work", "Work"))%>%
 library(gghalves)
 plot<-ggplot(long_data, aes(x = measure, y = value)) +
   geom_half_violin(trim = FALSE, fill = NA, color = "black", side = "l") +
-  geom_half_boxplot(width = 0.1, outlier.shape = NA, fill = NA, color = "black", side = "r") +
-  geom_point(shape = 95, color = "#1F4C4C", size = 10, alpha = 0.3) + # Vertical tick marks
+  geom_half_boxplot(width = 0.15, outlier.shape = NA, fill = NA, color = "black", side = "r") +
+  geom_point(shape = 95, color = "#1F4C4C", size = 10, alpha = 0.3, position = position_nudge(x = -0.1)) +
   labs(title = "",
        x = "Task Measures",
        y = "Centered Values") +
@@ -1966,7 +1959,7 @@ library(ggtext)
 
 # Define variables
 acoustic_vars <- c("mean_pitch_scaled", "mean_amplitude_scaled", "mean_tilt_scaled", "duration_scaled")
-id_vars <- c("dprime_battery_up_dur", "dprime_battery_up_ptich", "dprime_battery_up_risetime", "dprime_battery_up_formants", "lextale_score", "autism_score", "italian_lextale_score", "lextale_score","mean_working_memory")
+id_vars <- c("dprime_battery_up_dur", "dprime_battery_up_ptich", "dprime_battery_up_risetime", "dprime_battery_up_formants", "lextale_score", "autism_score", "italian_lextale_score", "mean_working_memory")
 
 # Convert the summaries into data frames
 result_ap_data_1_coefs <- as.data.frame(result_ap_data_1$summary$coef)
@@ -2044,7 +2037,7 @@ create_coef_plot <- function(coef_df, model_label, remove_y_labels = FALSE) {
     geom_vline(xintercept = 0, linetype = "dashed") +
     geom_point(position = position_dodge(width = 0.5)) +
     geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2, position = position_dodge(width = 0.5)) +
-    geom_text(aes(label = significance, x = 10, color = model_color), vjust = 0.5, position = position_dodge(width = 0.5),show.legend = FALSE) +
+    geom_text(aes(label = significance, x = 2.5, color = model_color), vjust = 0.5, position = position_dodge(width = 0.5),show.legend = FALSE) +
     labs(title = "",
          x = "Estimate",
          y = if (remove_y_labels) NULL else "Term",
@@ -2053,8 +2046,8 @@ create_coef_plot <- function(coef_df, model_label, remove_y_labels = FALSE) {
     theme(legend.position = "top",
           axis.text.y = if (remove_y_labels) element_blank() else element_markdown(),
           axis.ticks.y = if (remove_y_labels) element_blank() else element_line()) +
-    facet_wrap(.~ syllable)+
-  scale_color_manual(values = c("#C41230","#000000")) +
+    facet_wrap(.~ syllable,scales="free_x")+
+  scale_color_manual(values = c("#E77500","#000000")) +
   theme(legend.position = "bottom")
   return(plot)
 }
@@ -2065,6 +2058,7 @@ plot
 
 ggsave("../visuals/extended_analysis.jpeg", plot = plot , width = 8, height = 6, dpi = 300)
 ```
+
 ```{r}
 library(conflicted)
 library(caret)
