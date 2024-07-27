@@ -1128,11 +1128,11 @@ pen_anti_model <- ggplot(tidy_model, aes(x = estimate, y = row_number, color = f
 pen_anti_model
 ggsave("../visuals/pen_vs_anti_pen_model.jpeg", plot = pen_anti_model, width = 10, height = 6.6, dpi = 300)
 
-combined_plot_2 <- plot_grid(plot1,plot2, pen_anti_model, ncol = 1,rel_heights = c(2,2,2))+
-  draw_label("Estimated Coefficients                                   Antepenultimate                                   Penultimate ", x = 0.02, y = 0.5, angle = 90, size = 14)
+combined_plot_2 <- plot_grid(plot2,plot1, pen_anti_model, ncol = 1,rel_heights = c(2,2,2))+
+  draw_label("Estimated Coefficients                                       Penultimate                              Antepenultimate ", x = 0.02, y = 0.5, angle = 90, size = 14)
 
 combined_plot_2
-#ggsave("../visuals/pen_vs_anti_pen_id_combo.jpeg", plot = combined_plot_2, width = 6, height = 10, dpi = 300)
+ggsave("../visuals/pen_vs_anti_pen_id_combo.jpeg", plot = combined_plot_2, width = 6, height = 10, dpi = 300)
 
 ```
 
@@ -1148,6 +1148,7 @@ tar_longer<-comp_tar_longer%>%
   filter(syllable!=c(0,1))
   
 levels(tar_longer$syllable)
+levels(tar_longer$stress_play)
 library(lmerTest)
 tar_ana1<-lmerTest::lmer(tar_prop_o_looks~stress_play+(syllable|word_play)+(1|participant.private.id),data=tar_longer)
 tar_ana2<-lmerTest::lmer(tar_prop_o_looks~stress_play+(1|word_play)+(1|participant.private.id),data=tar_longer)
@@ -1658,6 +1659,7 @@ ggsave("../visuals/analysis_3_plot.jpeg", plot = analysis_3_plot , width = 8, he
 ```
 
 #individual differences for target and competitor fixations
+#This analysis over fixation is only for testing the method. The actual one is below
 ```{r}
 comp_tar_longer_id<-comp_tar_longer%>%
   left_join(battery_agg_wider_simp)%>%
@@ -1745,6 +1747,7 @@ comp_tar_longer_id <- comp_tar_longer %>%
   left_join(lextale_agg_cleaned_simp) %>%
   left_join(italian_lextale_agg_cleaned_simp) %>%
   left_join(autism_cleaned) %>%
+  #filter(syllable != 0) %>%
   #filter(syllable != 2) %>%
   filter(names == "target_looks")
 
@@ -1762,6 +1765,7 @@ summary_penultimate$plot
 summary_anti_penultimate$plot
 ```
 
+Individual differences analysis---- This is the analysis in the paper
 ```{r message=FALSE, warning=FALSE, paged.print=FALSE}
 library(conflicted)
 #parts_kept<-ets_exp1_all_agg_part_wider%>%ungroup%>%select(participant.private.id)%>%unique()%>%count()
