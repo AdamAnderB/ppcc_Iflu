@@ -1633,7 +1633,165 @@ analysis_3_plot <- ggplot(tidy_combined, aes(x = estimate, y = term, color = mod
 analysis_3_plot 
 
 ggsave("../visuals/analysis_3_plot.jpeg", plot = analysis_3_plot , width = 8, height = 5, dpi = 300)
+````
+3.1.4 without interactions:
+```{r}
+# Function to perform backward elimination
+backward_elimination <- function(model, data) {
+  current_model <- model
+  current_aic <- AIC(current_model)
+  
+  repeat {
+    # Get model terms
+    terms <- attr(terms(current_model), "term.labels")
+    
+    # Check if the model has only one term left
+    if (length(terms) == 1) break
+    
+    # Try removing each term and calculate the AIC
+    aics <- sapply(terms, function(term) {
+      new_formula <- as.formula(paste(". ~ . -", term))
+      new_model <- update(current_model, new_formula)
+      AIC(new_model)
+    })
+    
+    # Find the term whose removal decreases the AIC the most
+    best_term <- names(which.min(aics))
+    best_aic <- min(aics)
+    
+    # Stop if no improvement in AIC
+    if (best_aic >= current_aic) break
+    
+    # Update the current model and AIC
+    current_model <- update(current_model, as.formula(paste(". ~ . -", best_term)))
+    current_aic <- best_aic
+  }
+  
+  return(current_model)
+}
 ```
+
+
+```{r}
+mod_full_ni<-glmer(target_looks~(mean_pitch_scaled+mean_amplitude_scaled+mean_tilt_scaled+duration_scaled)
+                +(1|word),family=binomial, data= ap_data_1)
+
+mod_full_2_ni<-glmer(target_looks~(mean_pitch_scaled+mean_amplitude_scaled+mean_tilt_scaled+duration_scaled)
+                +(1|word),family=binomial, data= pp_data_1)
+
+mod_full_1_3_ni<-glmer(target_looks~(mean_pitch_scaled+mean_amplitude_scaled+mean_tilt_scaled+duration_scaled)
+                +(1|word),family=binomial, data= ap_data_3)
+
+mod_full_2_3_ni<-glmer(target_looks~(mean_pitch_scaled+mean_amplitude_scaled+mean_tilt_scaled+duration_scaled)
+                +(1|word),family=binomial, data= pp_data_3)
+
+summary(mod_full_ni)
+summary(mod_full_2_ni)
+
+summary(mod_full_1_3_ni)
+summary(mod_full_2_3_ni)
+
+simplified_ap_mod_1_ni <- backward_elimination(mod_full_ni, ap_data_1)
+
+simplified_pp_mod_1_ni <- backward_elimination(mod_full_2_ni, pp_data_1)
+
+simplified_ap_mod_3_ni <- backward_elimination(mod_full_1_3_ni, ap_data_3)
+
+simplified_pp_mod_3_ni <- backward_elimination(mod_full_2_3_ni, pp_data_3)
+
+
+summary(simplified_ap_mod_1)
+summary(simplified_pp_mod_1)
+summary(simplified_ap_mod_3)
+summary(simplified_pp_mod_3)
+```
+
+
+
+```{r}
+# Extract summaries for each model
+tidy_full_ni <- tidy(simplified_ap_mod_1_ni, effects = "fixed")
+tidy_full_2_ni <- tidy(simplified_pp_mod_1_ni, effects = "fixed")
+tidy_full_1_3_ni <- tidy(simplified_ap_mod_3_ni, effects = "fixed")
+tidy_full_2_3_ni <- tidy(simplified_pp_mod_3_ni, effects = "fixed")
+
+# Add a model identifier
+tidy_full_ni$model <- "Antepenultimate"
+tidy_full_2_ni$model <- "Penultimate"
+tidy_full_1_3_ni$model <- "Antepenultimate"
+tidy_full_2_3_ni$model <- "Penultimate"
+
+tidy_full_ni$syllable <- 1
+tidy_full_2_ni$syllable <- 1
+tidy_full_1_3_ni$syllable <- 3
+tidy_full_2_3_ni$syllable <- 3
+
+# Combine the summaries into one data frame
+tidy_combined_ni <- bind_rows(tidy_full_ni, tidy_full_2_ni, tidy_full_1_3_ni, tidy_full_2_3_ni)
+
+# Add a significance marker
+tidy_combined_ni <- tidy_combined_ni %>%
+  mutate(Significance = case_when(
+    p.value < 0.001 ~ "***",
+    p.value < 0.01 ~ "**",
+    p.value < 0.05 ~ "*",
+    TRUE ~ ""
+  ))%>%
+  mutate(term = str_replace_all(term, "1", "")) %>%
+  mutate(term = str_replace_all(term, "2", "")) %>%
+  mutate(term = str_replace_all(term, "3", "")) %>%
+  mutate(term = str_replace_all(term, "_", "")) %>%
+  mutate(term = str_replace_all(term, "dprime battery up", "(battery d')")) %>%
+  mutate(term = str_replace_all(term, "mean", "")) %>%
+  mutate(term = str_replace_all(term, "italian lextale score", "lextale (Italian)")) %>%
+  mutate(term = str_replace_all(term, "lextale score", "lextale (English)")) %>%
+  mutate(term = str_replace_all(term, "scaled", "")) %>%
+  mutate(term = str_replace_all(term, "dprime", "")) %>%
+  mutate(term = str_replace_all(term, "Autism score", "score")) %>%
+  mutate(term = str_replace_all(term, "tilt", "spectral tilt")) %>%
+  mutate(term = str_replace_all(term, "(battery d') dur", "(battery d') duration"))%>%
+  mutate(interaction_label = case_when(
+           str_detect(term, "Intercept") ~ 1,
+           str_detect(term, ":") ~ 3,
+           TRUE ~ 2
+         ))
+
+ordered_terms_order_ni <- tidy_combined_ni %>%
+  arrange(interaction_label) %>%
+  pull(term) %>%
+  unique()
+
+
+# Set factor levels for term
+tidy_combined_ni$term <- factor(tidy_combined_ni$term, levels = ordered_terms_order_ni)
+
+custom_labels <- c(`1` = "Syllable 1", `3` = "Syllable 2")
+# Plot for all models
+analysis_3_plot_ni <- ggplot(tidy_combined_ni, aes(x = estimate, y = term, color = model)) +
+  geom_point(position = position_dodge(width = 0.5), size = 3) +
+  geom_errorbarh(aes(xmin = estimate - 1.96 * std.error, xmax = estimate + 1.96 * std.error), 
+                 height = 0, position = position_dodge(width = 0.5), size = 1) +
+  labs(title = "", x = "Estimate", y = "Term",color = "Model Type") +
+  theme_minimal() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  facet_grid(. ~ syllable, labeller = labeller(syllable = custom_labels),scales="free") +
+  geom_text(aes(label = Significance, x = 1), vjust = 0.5, position = position_dodge(width = 0.5),show.legend = FALSE) +
+  scale_color_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
+  theme(legend.position = "bottom")
+# Print the plot
+analysis_3_plot_ni
+
+ggsave("../visuals/analysis_3_plot_ni.jpeg", plot = analysis_3_plot_ni , width = 8, height = 5, dpi = 300)
+```
+```{r}
+
+combined_plot_o_n <- plot_grid(analysis_3_plot_ni, analysis_3_plot, labels = c("Simple model", "Interaction Model"), ncol = 2)
+combined_plot_o_n
+
+ggsave("../visuals/combined_plot_o_n.jpeg", plot = combined_plot_o_n , width = 8, height = 5, dpi = 300)
+```
+
+
 
 #competitor looks analyses
 ```{r}
