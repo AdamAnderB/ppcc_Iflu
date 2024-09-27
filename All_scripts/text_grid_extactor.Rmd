@@ -210,7 +210,7 @@ data_full_clean_agg<-data_full_clean%>%
             duration=max_time-min_time,
             mean_tilt=mean(spectral_tilt))
 
-
+View(aco_agg)
 aco_agg<-data_full_clean_agg%>%
   group_by(stress,vowel)%>%
   na.omit()%>%
@@ -223,6 +223,44 @@ aco_agg<-data_full_clean_agg%>%
 all_data<-data_full_clean_agg
 write.csv(all_data,"acoustic_data_ppcc.csv")
 ```
+
+```{r}
+# Load necessary libraries
+library(tuneR)
+
+# Directory where the .wav files are located
+directory <- "../../ppcc_iflu_data/Exp1/files"
+
+# List all .wav files in the directory
+wav_files <- list.files(directory, pattern = ".wav", full.names = TRUE)
+
+# Initialize a data frame to store file names and durations
+file_data <- data.frame(
+  file_name = character(),
+  duration_ms = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Loop through each .wav file and get its duration in milliseconds
+for (wav_file in wav_files) {
+  # Read the .wav file
+  audio <- readWave(wav_file)
+  
+  # Get the duration in milliseconds
+  duration_ms <- length(audio@left) / audio@samp.rate * 1000
+  
+  # Append the file name and duration to the data frame
+  file_data <- rbind(file_data, data.frame(file_name = basename(wav_file), duration_ms = duration_ms))
+}
+
+
+mean_duration <- mean(file_data$duration_ms)
+
+# Calculate the standard deviation of the durations in milliseconds
+sd_duration <- sd(file_data$duration_ms)
+
+```
+
 
 #previous code
 ```{r}
