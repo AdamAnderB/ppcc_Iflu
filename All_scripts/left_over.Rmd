@@ -1,0 +1,2854 @@
+---
+title: "work_flow"
+author: "blind"
+date: "2024-04-15"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+library(purrr)
+library(tidyr)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(psycho)
+library(readxl)
+library(GGally)
+library(conflicted)
+library(performance)
+library(cowplot)
+library(lme4)
+library(lmerTest)
+library(caret)
+library(leaps)
+library(glmnet)
+library(lattice)
+library(ltm)
+```
+
+```{r}
+target_dir <- "../../ppcc_iflu_data/read_data"
+# Reading the data back in
+s_exp1 <- read.csv(file.path(target_dir, "s_exp1.csv"))
+#s_exp1_data_all <- read.csv(file.path(target_dir, "s_exp1_data_all.csv"))
+s_exp1_et <- read.csv(file.path(target_dir, "s_exp1_et.csv"))
+digit_span <- read.csv(file.path(target_dir, "digit_span.csv"))
+battery <- read.csv(file.path(target_dir, "battery.csv"))
+lextale <- read.csv(file.path(target_dir, "lextale.csv"))
+italian_lextale <- read.csv(file.path(target_dir, "italian_lextale.csv"))
+autism <- read.csv(file.path(target_dir, "autism.csv"))
+acoustic_data <- read.csv(file.path(target_dir, "acoustic_data.csv"))
+removal <- read.csv(file.path(target_dir, "removal.csv"))
+```
+#battery tasks 
+```{r}
+conflicts_prefer(dplyr::filter)
+battery_tidy<-battery%>%
+  select(participant.private.id,tree.node.key,task.name,screen.name,screen.number,display,reaction.time,response,sound1,sound2,base1,base2,same)%>%
+  filter(display=="block" &screen.name == "Screen 3")%>%
+  mutate(responses=case_when(response == "'z'"~1,
+                             response == "'m'"~0),
+         correct=if_else(responses==same,1,0),
+         difference=abs(base1-base2))
+
+battery_tidy%>%ggplot(aes(x=reaction.time))+
+  geom_histogram()+
+  facet_wrap(participant.private.id~.)
+
+mad_standard=3
+
+battery_cleaned<-battery_tidy%>%
+  #group_by(participant.private.id)%>%
+  dplyr::filter(reaction.time>200)%>%
+  mutate(log_rt=sqrt(reaction.time))%>%
+  mutate(display_medians = median(log_rt),
+         abs_distance = abs(display_medians-log_rt),
+         mean_distance = mean(abs_distance),
+         upper_mad = display_medians+(mean_distance*mad_standard),
+         lower_mad = display_medians-(mean_distance*mad_standard))%>%
+  group_by(participant.private.id)%>%
+  mutate(participants_medians = median(log_rt))%>%
+  dplyr::filter(log_rt<upper_mad &log_rt>lower_mad)
+
+
+removal[nrow(removal) + 1, ] <- c("battery removal", 
+                                  nrow(battery_tidy) - nrow(battery_cleaned))
+
+battery_cleaned%>%ggplot(aes(x=log_rt))+
+  geom_histogram()+
+  geom_point(aes(x=upper_mad,y=0),color="red")+
+  geom_point(aes(x=lower_mad,y=0),color="blue")+
+  facet_wrap(participant.private.id~.)
+
+battery_cleaned%>%ggplot(aes(x=factor(participant.private.id),y=participants_medians))+
+  geom_point()+
+  geom_point(aes(y=upper_mad,x=factor(participant.private.id)),color="red")+
+  geom_point(aes(y=lower_mad,x=factor(participant.private.id)),color="blue")
+
+battery_cleaned_part_agg<-battery_cleaned%>%
+  group_by(participant.private.id)%>%
+summarise(score=mean(correct))%>%
+  ungroup()%>%
+    mutate(medians = median(score),
+           abs_distance = abs(medians-score),
+           mean_distance = mean(abs_distance),
+           upper_mad = medians+(mean_distance*mad_standard),
+           lower_mad = medians-(mean_distance*mad_standard))
+
+battery_cleaned_part_agg_filtered<-battery_cleaned_part_agg%>%filter(score>lower_mad)
+length(unique(battery_cleaned_part_agg$participant.private.id))
+length(unique(battery_cleaned_part_agg_filtered$participant.private.id))
+
+battery_cleaned_part_agg%>%
+  ggplot(aes(x=factor(participant.private.id),y=score))+
+  geom_point()+
+  geom_point(aes(x=factor(participant.private.id),y=upper_mad),color="red")+
+  geom_point(aes(x=factor(participant.private.id),y=lower_mad),color="red")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+
+battery_cleaned_part_agg_keep<-battery_cleaned_part_agg%>%
+  filter(score<upper_mad & score>lower_mad)
+
+battery_cleaned_item_agg<-battery_cleaned%>%
+  mutate(item=paste(difference))%>%
+  group_by(item,participant.private.id,task.name)%>%
+summarise(score=mean(correct))%>%
+  ungroup()%>%
+    mutate(medians = median(score),
+           abs_distance = abs(medians-score),
+           mean_distance = mean(abs_distance),
+           upper_mad = medians+(mean_distance*mad_standard),
+           lower_mad = medians-(mean_distance*mad_standard))
+
+battery_cleaned_item_agg%>%
+  ggplot(aes(x=factor(item),y=score))+
+  geom_boxplot()+
+  geom_jitter()+
+  geom_point(aes(x=factor(item),y=upper_mad),color="red")+
+  geom_point(aes(x=factor(item),y=lower_mad),color="red")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))+facet_grid(.~task.name)
+
+battery_agg2<-battery_cleaned%>%
+  group_by(participant.private.id, task.name) %>%
+  summarize(score=mean(correct))
+
+battery_agg2%>%ggplot(aes(x=task.name,y=score,color=factor(task.name)))+
+  geom_boxplot()+
+  geom_jitter()+
+  theme_minimal()
+
+
+battery_agg<-battery_cleaned%>%
+  mutate(
+    hit = if_else(same == 1 & responses == 1L, 1L, 0L),
+    f_a = if_else(same == 0 & responses == 1L, 1L, 0L),
+    miss = if_else(same == 0 & responses == 0L, 1L, 0L),
+    c_r = if_else(same == 1 & responses == 0L, 1L, 0L))%>%
+  group_by(participant.private.id, task.name) %>%
+  summarize(
+    score=mean(correct)+.5,
+    hit_count = sum(hit)+.5,
+    f_a_count = sum(f_a)+.5,
+    miss_count = sum(miss)+.5,
+    c_r_count = sum(c_r)+.5,
+    .groups = 'drop')%>%
+  mutate(
+    dprime = dprime(hit_count, 
+                             f_a_count, 
+                             hit_count + miss_count, 
+                             f_a_count + c_r_count)$dprime,
+    c = dprime(hit_count, 
+                        f_a_count, 
+                        hit_count + miss_count, 
+                        f_a_count + c_r_count)$c)%>%
+  select(participant.private.id, task.name, dprime, c)
+
+
+battery_agg%>%ggplot(aes(x=factor(task.name),y=dprime,color=factor(task.name),alpha=.4))+
+  geom_line(aes(group=factor(participant.private.id)),color="black")+
+  geom_violin()+
+  geom_boxplot(width=.5)+
+  geom_point()+
+  theme_minimal()
+
+battery_agg%>%ggplot(aes(x=c,y=dprime,color=factor(task.name)))+
+  geom_point()+
+  theme_minimal()+
+  facet_grid(.~factor(task.name))
+
+battery_agg_wider<-battery_agg%>%
+  pivot_wider(names_from = task.name,values_from = c(dprime:c))
+
+battery_agg_wider_simp<-battery_agg_wider
+ggpairs(battery_agg_wider_simp%>%select(!participant.private.id))
+
+
+initial_participants <- battery_agg_wider_simp$participant.private.id
+
+
+battery_agg_wider_simp<-battery_agg_wider_simp%>%filter(participant.private.id%in%battery_cleaned_part_agg_filtered$participant.private.id)
+
+
+length(unique(battery_agg_wider_simp$participant.private.id))
+
+removed_participants <- setdiff(initial_participants, battery_agg_wider_simp$participant.private.id)
+
+removed_participants
+
+#cronbachs:
+battery_cb <- battery_cleaned %>%
+  mutate(item=paste(difference))%>%
+  select(correct,item,participant.private.id,task.name)
+
+battery_cb_dur_a<-cronbach.alpha(battery_cb%>%
+                                   filter(task.name=="battery_up_dur")%>%
+                                   group_by(item,participant.private.id)%>%
+                                    summarize(correct=mean(correct))%>%
+                                    pivot_wider(names_from = item, values_from = correct)%>%
+                                    mutate(across(everything(), ~replace_na(., 0)))%>%
+                                    select(-participant.private.id))$alpha
+battery_cb_formants_a<-cronbach.alpha(battery_cb%>%
+                                        filter(task.name=="battery_up_formants")%>%
+                                   group_by(item,participant.private.id)%>%
+                                    summarize(correct=mean(correct))%>%
+                                    pivot_wider(names_from = item, values_from = correct)%>%
+                                    mutate(across(everything(), ~replace_na(., 0)))%>%
+                                    select(-participant.private.id))$alpha
+battery_cb_risetime_a<-cronbach.alpha(battery_cb%>%
+                                        filter(task.name=="battery_up_risetime")%>%
+                                   group_by(item,participant.private.id)%>%
+                                    summarize(correct=mean(correct))%>%
+                                    pivot_wider(names_from = item, values_from = correct)%>%
+                                    mutate(across(everything(), ~replace_na(., 0)))%>%
+                                    select(-participant.private.id))$alpha
+battery_cb_pitch_a<-cronbach.alpha(battery_cb%>%
+                                     filter(task.name=="battery_up_ptich")%>%
+                                   group_by(item,participant.private.id)%>%
+                                    summarize(correct=mean(correct))%>%
+                                    pivot_wider(names_from = item, values_from = correct)%>%
+                                    mutate(across(everything(), ~replace_na(., 0)))%>%
+                                    select(-participant.private.id))$alpha
+
+battery_cb_dur_a
+battery_cb_formants_a
+battery_cb_risetime_a
+battery_cb_pitch_a
+```
+#digit span
+```{r}
+digit_tidy<-digit_span%>%
+  select(participant.private.id,tree.node.key,task.name,
+         target,response,length,correct.,total.correct)%>%
+  filter(correct.==1)%>%
+  group_by(participant.private.id)%>%
+  mutate(length=as.numeric(length))%>%
+  summarize(max_working_memory=max(length),
+         min_working_memory=min(length),
+         mean_working_memory=mean(length),
+         max_correct=max(total.correct))
+
+digit_tidy%>%
+  ggplot(aes(x=1,y=max_correct,color=factor(max_working_memory)))+
+  geom_jitter()
+
+digit_cleaned<-digit_tidy%>%
+  ungroup()%>%
+  mutate(display_medians = median(max_correct),
+         abs_distance = abs(display_medians-mean_working_memory),
+         mean_distance = mean(abs_distance),
+         upper_mad = display_medians+(mean_distance*mad_standard),
+         lower_mad = display_medians-(mean_distance*mad_standard))%>%
+  filter(max_correct<upper_mad &max_correct>lower_mad)
+
+digit_cleaned%>%
+  ggplot(aes(x=mean_working_memory))+
+  geom_histogram()
+
+digit_cleaned%>%
+  ggplot(aes(x=1,y=mean_working_memory,color=factor(max_working_memory)))+
+  geom_jitter()
+
+removal[nrow(removal) + 1, ] <- c("digit_span_participant", 
+                                  nrow(digit_tidy) - nrow(digit_cleaned))
+
+digit_cleaned_simp<-digit_cleaned%>%select(participant.private.id,mean_working_memory)
+
+#cronbach
+digit_cb<-digit_span%>%
+  filter(participant.private.id%in%battery_cleaned_part_agg_filtered$participant.private.id)%>%
+  select(participant.private.id,tree.node.key,task.name,
+         target,response,length,correct.,total.correct)%>%
+  mutate(correct. = ifelse(is.na(correct.), 0, correct.))%>%
+  group_by(length) %>%
+  mutate(row_id = row_number()) %>%
+  ungroup()%>%
+  select(correct.,row_id,length)%>%
+  pivot_wider(names_from = length, values_from = correct.)%>%
+  mutate(across(everything(), ~replace_na(., 0)))%>%
+  select(-row_id)%>%
+  select(where(~ !all(. == 1) & !all(. == 0)))
+
+digit_cb_a<-cronbach.alpha(digit_cb)$alpha
+digit_cb_a
+```
+
+#lextale English
+```{r}
+lextale_tidy<-lextale%>%
+  select(participant.private.id,screen.name,zone.type,reaction.time,item,correct,response)%>%
+  filter(zone.type=="response_keyboard")%>%
+  filter(reaction.time>250)
+
+lextale_tidy%>%ggplot(aes(x=reaction.time))+geom_histogram()
+
+lextale_agg<-lextale_tidy%>%
+  mutate(
+    hit = if_else(response == "word" & correct == 1, 1, 0),
+    miss = if_else(response == "word" & correct == 0, 1, 0),
+    f_a = if_else(response == "non" & correct == 0, 1, 0),
+    c_r = if_else(response == "non" & correct == 1, 1, 0))%>%
+  group_by(participant.private.id) %>%
+  summarize(
+    score=mean(correct)+.5,
+    hit_count = sum(hit)+.5,
+    f_a_count = sum(f_a)+.5,
+    miss_count = sum(miss)+.5,
+    c_r_count = sum(c_r)+.5,
+    .groups = 'drop')%>%
+  mutate(
+    dprime = dprime(hit_count, 
+                             f_a_count, 
+                             hit_count + miss_count, 
+                             f_a_count + c_r_count)$dprime,
+    c = dprime(hit_count, 
+                        f_a_count, 
+                        hit_count + miss_count, 
+                        f_a_count + c_r_count)$c)%>%
+  select(participant.private.id, dprime, c)%>%
+  mutate(lextale_score=dprime)%>%
+  select(-c(dprime, c))
+densityplot(lextale_agg$lextale_score)
+
+lextale_agg_cleaned<-lextale_agg%>%
+  ungroup()%>%
+  mutate(medians = median(lextale_score),
+         abs_distance = abs(medians-lextale_score),
+         mean_distance = mean(abs_distance),
+         upper_mad = medians+(mean_distance*mad_standard),
+         lower_mad = medians-(mean_distance*mad_standard))%>%
+  filter(lextale_score<upper_mad &lextale_score>lower_mad)
+
+lextale_cb <- lextale_tidy %>%
+  select(-reaction.time) %>%
+  pivot_wider(names_from = item, values_from = correct) %>%
+  select(-participant.private.id)%>%
+  mutate(across(everything(), ~replace_na(., 0)))
+
+lextale_cb_a<-cronbach.alpha(lextale_cb)$alpha
+lextale_cb_a
+
+lextale_agg_cleaned%>%ggplot(aes(x=lextale_score))+
+  geom_histogram()
+
+
+removal[nrow(removal) + 1, ] <- c("lextale_agg_participant", 
+                                  nrow(lextale_agg) - nrow(lextale_agg_cleaned))
+
+lextale_agg_cleaned_simp<-lextale_agg_cleaned%>%select(lextale_score,participant.private.id)
+```
+#lextale italian
+```{r}
+italian_lextale_tidy<-italian_lextale%>%
+  select(participant.private.id,screen.name,zone.type,reaction.time,spreadsheet.row,correct,response)%>%
+  filter(zone.type=="response_keyboard")%>%
+  filter(reaction.time>200)
+
+italian_lextale_tidy%>%ggplot(aes(x=reaction.time))+geom_histogram()
+
+italian_lextale_agg<-italian_lextale_tidy%>%
+  mutate(
+    hit = if_else(response == "word" & correct == 1, 1, 0),
+    miss = if_else(response == "word" & correct == 0, 1, 0),
+    f_a = if_else(response == "non" & correct == 0, 1, 0),
+    c_r = if_else(response == "non" & correct == 1, 1, 0))%>%
+  group_by(participant.private.id) %>%
+  summarize(
+    score=mean(correct)+.5,
+    hit_count = sum(hit)+.5,
+    f_a_count = sum(f_a)+.5,
+    miss_count = sum(miss)+.5,
+    c_r_count = sum(c_r)+.5,
+    .groups = 'drop')%>%
+  mutate(
+    dprime = dprime(hit_count, 
+                             f_a_count, 
+                             hit_count + miss_count, 
+                             f_a_count + c_r_count)$dprime,
+    c = dprime(hit_count, 
+                        f_a_count, 
+                        hit_count + miss_count, 
+                        f_a_count + c_r_count)$c)%>%
+  select(participant.private.id, dprime, c)%>%
+  mutate(italian_lextale_score=dprime)%>%
+  select(-c(dprime, c))
+
+densityplot(italian_lextale_agg$italian_lextale_score)
+
+italian_lextale_agg_cleaned<-italian_lextale_agg%>%
+  ungroup()%>%
+  mutate(medians = median(italian_lextale_score),
+         abs_distance = abs(medians-italian_lextale_score),
+         mean_distance = mean(abs_distance),
+         upper_mad = medians+(mean_distance*mad_standard),
+         lower_mad = medians-(mean_distance*mad_standard))%>%
+  filter(italian_lextale_score<upper_mad &italian_lextale_score>lower_mad)
+
+italian_lextale_cb <- italian_lextale_tidy %>%
+  select(-reaction.time) %>%
+  pivot_wider(names_from = spreadsheet.row, values_from = correct) %>%
+  select(-participant.private.id)%>%
+  mutate(across(everything(), ~replace_na(., 0)))
+
+italian_lextale_cb_a<-cronbach.alpha(italian_lextale_cb)$alpha
+
+italian_lextale_agg_cleaned%>%ggplot(aes(x=italian_lextale_score))+
+  geom_histogram()
+
+removal[nrow(removal) + 1, ] <- c("italian_lextale_agg_participant", 
+                                  nrow(italian_lextale_agg) - nrow(italian_lextale_agg_cleaned))
+
+italian_lextale_agg_cleaned_simp<-italian_lextale_agg_cleaned%>%select(italian_lextale_score,participant.private.id)
+```
+#ASD scores
+```{r}
+autism_tidy<-autism%>%
+  select(participant.private.id,question.key,response)%>%
+  filter(str_detect(question.key, "quantised"))%>%
+  mutate(response=as.numeric(response))
+
+
+agree<-c(1, 2, 4, 5, 6, 7, 9, 12, 13, 16, 18, 19, 20, 21, 
+         22, 23, 26, 33, 35, 39, 41,42, 43, 45, 46)
+disagree<-c(3, 8, 10, 11, 14, 15, 17, 24, 25, 27, 28, 29, 
+            30, 31, 32,34, 36, 37, 38, 40, 44, 47, 48, 49, 50)
+agr_key<-c("1","2")
+dis_key<-c("3","4")
+
+autism_cleaned<-autism_tidy%>%
+  mutate(key_response = str_replace_all(question.key, "AQ", ""))%>%
+  mutate(key_response = str_replace_all(key_response, "-quantised", ""))%>%
+  mutate(points=case_when(key_response%in%agree & response %in% agr_key~1,
+                          key_response%in%agree & response %in% dis_key~0,
+                          key_response%in%disagree & response %in% dis_key~1,
+                          key_response%in%disagree & response %in% agr_key~0))%>%
+  group_by(participant.private.id)%>%
+  summarize(autism_score=mean(points))
+
+autism_cb<-autism_tidy%>%
+  pivot_wider(names_from = question.key,values_from = response)%>%
+  select(-participant.private.id)
+
+autism_cb_a<-cronbach.alpha(autism_cb)$alpha
+autism_cb_a
+
+autism_cleaned%>%ggplot(aes(x=autism_score))+geom_histogram()
+```
+#cronbach alphas for each individual difference task
+```{r}
+cronbach_list <- list(
+  battery_duration = battery_cb_dur_a,
+  battery_formants = battery_cb_formants_a,
+  battery_risetime = battery_cb_risetime_a,
+  battery_pitch = battery_cb_pitch_a,
+  digit_span = digit_cb_a,
+  lextale = lextale_cb_a,
+  italian_lextale = italian_lextale_cb_a,
+  autism = autism_cb_a
+)
+
+cronbachs_alpha_df <- data.frame(
+  Dataset = names(cronbach_list),
+  Alpha = sapply(cronbach_list, function(x) round(x, 2))
+)
+hist(cronbachs_alpha_df$Alpha)
+
+write_csv(cronbachs_alpha_df, file.path(target_dir, "cronbach_alpha.csv"))
+```
+
+#minor task clean up above
+#experiment 1 behaviorial data clean up
+
+```{r}
+s_exp1_cleaned<-s_exp1%>%
+  select(participant.private.id,spreadsheet.row,response,real_1_distractor_0,zone.type,display,audio,
+         q1_image,q2_image,q3_image,q4_image,
+         id,grouping_id,sorting,audio)%>%
+  filter(zone.type=="response_button_image")%>%
+  mutate(audio=tolower(audio),
+         word_play = str_remove(str_extract(audio, "^[^_]+"), "\\.wav"),
+         word_play_start = substr(word_play, 1, 3),
+         stress_play = str_remove(str_extract(audio, "(?<=_)[^_]+"), "\\.wav"),
+         response_word = str_extract(response, "(?<=\\d)[a-zA-Z]+(?=\\.jpeg)"),
+         response_thing = str_extract(response, "(?<=\\D)\\d{2}(?=[a-zA-Z]+\\.jpeg)"),
+         correct=if_else(response_word==word_play,1,0))%>%
+  mutate(stress_play=if_else(stress_play=="p","Penultimate","Anti-penultimate"),
+         q1_word= str_extract(q1_image, "(?<=\\d)[a-zA-Z]+(?=\\.jpeg)"),
+         q2_word= str_extract(q2_image, "(?<=\\d)[a-zA-Z]+(?=\\.jpeg)"),
+         q3_word= str_extract(q3_image, "(?<=\\d)[a-zA-Z]+(?=\\.jpeg)"),
+         q4_word= str_extract(q4_image, "(?<=\\d)[a-zA-Z]+(?=\\.jpeg)"))%>%
+ mutate(target_quantile=case_when(q1_word==word_play~1,
+                                 q2_word==word_play~2,
+                                 q3_word==word_play~3,
+                                 q4_word==word_play~4),
+       competitor_quantile = case_when(
+      q1_word != word_play & str_detect(q1_word,word_play_start) ~ 1,
+      q2_word != word_play & str_detect(q2_word,word_play_start) ~ 2,
+      q3_word != word_play & str_detect(q3_word,word_play_start) ~ 3,
+      q4_word != word_play & str_detect(q4_word,word_play_start) ~ 4))%>%
+  rowwise() %>%
+  mutate(distractor_1_quantile = {
+    possible_values <- setdiff(1:4, c(target_quantile, competitor_quantile))
+    sample(possible_values, 1)
+  })%>%
+  mutate(distractor_2_quantile = 10-sum(distractor_1_quantile,target_quantile,competitor_quantile))%>%
+  ungroup()
+
+s_exp1_cleaned<-s_exp1_cleaned%>%
+  mutate(target = case_when(target_quantile == 1 ~ q1_word,
+                            target_quantile == 2 ~ q2_word,
+                            target_quantile == 3 ~ q3_word,
+                            target_quantile == 4 ~ q4_word),
+         competitor = case_when(competitor_quantile == 1 ~ q1_word,
+                                competitor_quantile == 2 ~ q2_word,
+                                competitor_quantile == 3 ~ q3_word,
+                                competitor_quantile == 4 ~ q4_word),
+         dist_1 = case_when(distractor_1_quantile == 1 ~ q1_word,
+                                  distractor_1_quantile == 2 ~ q2_word,
+                                  distractor_1_quantile == 3 ~ q3_word,
+                                  distractor_1_quantile == 4 ~ q4_word),
+         dist_2 = case_when(distractor_2_quantile == 1 ~ q1_word,
+                                  distractor_2_quantile == 2 ~ q2_word,
+                                  distractor_2_quantile == 3 ~ q3_word,
+                                  distractor_2_quantile == 4 ~ q4_word))
+
+```
+
+```{r}
+item_agg<-s_exp1_cleaned%>%group_by(word_play)%>%
+  filter(participant.private.id%in%battery_cleaned_part_agg_filtered$participant.private.id)%>%
+  summarise(score=mean(correct))%>%
+  ungroup()%>%
+  mutate(medians = median(score),
+         abs_distance = abs(medians-score),
+         mean_distance = mean(abs_distance),
+         upper_mad = medians+(mean_distance*mad_standard),
+         lower_mad = medians-(mean_distance*mad_standard))
+
+item_agg%>%
+  ggplot(aes(x=factor(word_play),y=score))+
+  geom_point()+
+  geom_point(aes(x=factor(word_play),y=upper_mad),color="red")+
+  geom_point(aes(x=factor(word_play),y=lower_mad),color="red")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+
+item_agg_keep<-item_agg%>%
+  filter(score<upper_mad & score>lower_mad)
+
+removal[nrow(removal) + 1, ] <- c("exp1_item_removed", 
+                                  length(unique(item_agg$word_play)) - length(unique(item_agg_keep$word_play)))
+
+part_agg<-s_exp1_cleaned%>%group_by(participant.private.id)%>%
+  summarise(score=mean(correct))%>%
+  ungroup()%>%
+    mutate(medians = median(score),
+           abs_distance = abs(medians-score),
+           mean_distance = mean(abs_distance),
+           upper_mad = medians+(mean_distance*mad_standard),
+           lower_mad = medians-(mean_distance*mad_standard))
+
+part_agg%>%
+  ggplot(aes(x=factor(participant.private.id),y=score))+
+  geom_point()+
+  geom_point(aes(x=factor(participant.private.id),y=upper_mad),color="red")+
+  geom_point(aes(x=factor(participant.private.id),y=lower_mad),color="red")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+
+part_agg_keep<-part_agg%>%
+  filter(score<upper_mad & score>lower_mad)
+
+removal[nrow(removal) + 1, ] <- c("exp1_part_removed", 
+                                  length(unique(part_agg$participant.private.id)) - length(unique(part_agg_keep$participant.private.id)))
+
+#s_exp1_cleaned<-s_exp1_cleaned%>%filter(participant.private.id%in%part_agg_keep$participant.private.id)
+#s_exp1_cleaned<-s_exp1_cleaned%>%filter(word_play%in%item_agg_keep$word_play)
+
+length(unique(s_exp1_cleaned$participant.private.id))
+length(unique(s_exp1_cleaned$word_play))
+
+list_o_word<-c('canapa','candido','celebre','codice','comico','eremo','estero','federa','forbice','fragola','impeto','lattice','loculo','macabro','mastice','missile','monito','panico','protesi','remora','salice','senape','tonaca','zigomo','canale','candito','celeste','codino','comizio','erede','esteta','fedele','forbito','fragore','impero','lattina','locusta','macaco','mastino','missiva','monile','panino','protesta','remoto','saliva','senato','tonale','zigote')
+
+s_exp1_cleaned<-s_exp1_cleaned%>%
+  filter(correct==1)%>%
+  filter(word_play%in%list_o_word)
+
+prac<-s_exp1_cleaned%>%ungroup()%>%group_by(real_1_distractor_0,stress_play,word_play)%>%count()
+```
+
+
+#exp 1 eye-tracking data clean up
+```{r}
+s_exp1_et_cleaned<-s_exp1_et%>%
+  select(participant_id,spreadsheet_row,type,time_stamp,
+         time_elapsed,x_pred_normalised,y_pred_normalised,face_conf)%>%
+  mutate(participant.private.id=participant_id,
+         spreadsheet.row=spreadsheet_row)%>%
+  select(!c(participant_id,spreadsheet_row))%>%
+  filter(type=="prediction")
+  
+eye_fixations <- s_exp1_et_cleaned %>%
+  left_join(s_exp1_cleaned)%>%
+  na.omit()%>%
+  filter(face_conf>.5)%>%
+  mutate(x_pred_normalised=x_pred_normalised-.5,
+         y_pred_normalised=y_pred_normalised-.5)
+
+eye_fixations_kept <- s_exp1_et_cleaned %>%
+  left_join(s_exp1_cleaned)%>%
+  na.omit()%>%
+  filter(face_conf>.5)%>%
+  mutate(x_pred_normalised=x_pred_normalised-.5,
+         y_pred_normalised=y_pred_normalised-.5)%>%
+  filter(x_pred_normalised<1&x_pred_normalised>-1)%>%
+  filter(y_pred_normalised<1&y_pred_normalised>-1)
+
+nrow(eye_fixations_kept)/nrow(eye_fixations)
+
+origin<-c(0,0)
+s_exp1_data_all <- s_exp1_et_cleaned %>%
+  left_join(s_exp1_cleaned)%>%
+  na.omit()%>%
+  filter(face_conf>.5)%>%
+  mutate(x_pred_normalised=x_pred_normalised-.5,
+         y_pred_normalised=y_pred_normalised-.5)%>%
+  filter(x_pred_normalised<1&x_pred_normalised>-1)%>%
+  filter(y_pred_normalised<1&y_pred_normalised>-1)%>%
+  mutate(current_quadrant = case_when(
+            x_pred_normalised < origin[1] & y_pred_normalised > origin[2] ~ q1_word,
+            x_pred_normalised > origin[1] & y_pred_normalised > origin[2] ~ q2_word,
+            x_pred_normalised < origin[1] & y_pred_normalised < origin[2] ~ q3_word,
+            x_pred_normalised > origin[1] & y_pred_normalised < origin[2] ~ q4_word))%>%
+  mutate(target_looks=if_else(current_quadrant==target,1,0),
+         competitor_looks=if_else(current_quadrant==competitor,1,0),
+         dist1_looks=if_else(current_quadrant==dist_1,1,0),
+         dist2_looks=if_else(current_quadrant==dist_2,1,0))%>%
+  group_by(participant.private.id,spreadsheet.row,stress_play)%>%
+  mutate(time=time_stamp-min(time_stamp),
+         time_rounded = round(time / 50) * 50)%>%
+  mutate(time_rounded=time_rounded-1200)%>% #offset for item experiment timing
+  filter(time_rounded<1000&time_rounded>=0)
+
+
+frame_rate_cut_off<-5
+time_binning=50
+all_data_cleaned_fr<-s_exp1_data_all%>%
+  group_by(participant.private.id,word_play,stress_play)%>%
+  mutate(count = n(),
+            max_time = max(time_elapsed),
+            frame_rate = count/max_time*1000)%>%
+  ungroup()%>%
+  group_by(participant.private.id)%>%
+  mutate(median_frame_rate = median(frame_rate))%>%
+  filter(median_frame_rate>=frame_rate_cut_off)%>%
+  mutate(time_elapsed_rounded=time_binning*round((time_elapsed)/time_binning))
+ 
+all_data_cleaned_fr%>%ggplot(aes(x=participant.private.id,y=median_frame_rate))+geom_point()
+all_data_cleaned_fr_part<-all_data_cleaned_fr%>%filter(median_frame_rate>5)
+length(unique(all_data_cleaned_fr_part))
+length(unique(all_data_cleaned_fr))
+```
+```{r, warning=FALSE}
+ets_exp1_all_agg<-s_exp1_data_all%>%
+  group_by(stress_play,time_rounded)%>%
+  summarise(mean_target_looks=mean(target_looks),
+            mean_competitor_looks=mean(competitor_looks),
+            mean_dist1_looks=mean(dist1_looks),
+            mean_dist2_looks=mean(dist2_looks))%>%
+  ungroup()%>%
+  pivot_longer(cols=c(mean_target_looks:mean_dist2_looks),names_to = "names",values_to="values")
+  
+
+penn_times<-c(300, 500, 650)
+anti_times<-c(390, 530, 625)
+
+df_1 <- data.frame(
+  time_rounded = penn_times,
+  values = 0.6,
+  labels = c("ca", "LA", "ta")
+)
+
+df_2 <- data.frame(
+  time_rounded = anti_times,
+  values = 0.6,
+  labels = c("CA", "la", "mo")
+)
+
+plot1<-ets_exp1_all_agg %>%
+  filter(stress_play == "Penultimate") %>%
+  ggplot(aes()) +
+  geom_text(data=df_1,aes(label=labels,x = time_rounded, y = values),
+            family = "Arial", size = 4, fontface = "bold")+
+  geom_point(aes(x = time_rounded, y = values, color = names)) +
+  geom_smooth(aes(x = time_rounded, y = values, color = names),se=FALSE)+
+  scale_y_continuous(breaks=seq(0, 1, by = .25),
+                     labels=seq(0, 1, by = .25))+
+  scale_x_continuous(
+    breaks = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    labels = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    minor_breaks = c(0,200,201, 396, 566, 699,800), 
+    position = "bottom")+
+  theme_minimal() +
+  theme(
+    axis.text.x.top = element_text(color = "black"),
+    axis.text.x = element_text(color = "black"),
+    panel.grid.major.x = element_line(color = "grey", size = 0.1),
+    panel.grid.minor.x = element_line(linetype = "dotted", color = "black", size = 0.5),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_line(color = "grey", size = 0.1),
+    legend.position = c(0.1, 0.9),
+    legend.justification = c(0, 1),
+    legend.background = element_rect(fill = "white", colour = "black"))+
+  labs(x = NULL,y= "") +
+  guides(color = guide_legend(title = "Looks to:"))+
+  scale_color_manual(
+    values = c("mean_target_looks" = "#c41230", "mean_competitor_looks" = "#007bc0", 
+               "mean_dist1_looks" = "#A7A7A9", "mean_dist2_looks" = "#000000"),
+    labels = c("Competitor", "Distractor", "Distractor","Target")
+  )
+
+plot2<-ets_exp1_all_agg %>%
+  filter(stress_play == "Anti-penultimate") %>%
+  ggplot(aes()) +
+  geom_text(data=df_2,aes(label=labels,x = time_rounded, y = values),
+            family = "Arial", size = 4, fontface = "bold")+
+  geom_point(aes(x = time_rounded, y = values, color = names)) +
+  geom_smooth(aes(x = time_rounded, y = values, color = names),se=FALSE)+
+  scale_y_continuous(breaks=seq(0, 1, by = .25),
+                     labels=seq(0, 1, by = .25))+
+  scale_x_continuous(
+    breaks = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    labels = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    minor_breaks = c(0,200,201, 499, 566, 669,800),
+    position = "bottom")+
+  theme_minimal() +
+  theme(
+    axis.text.x.top = element_text(color = "black"),
+    axis.text.x = element_blank(),
+    panel.grid.major.x = element_line(color = "grey", size = 0.1),
+    panel.grid.minor.x = element_line(linetype = "dotted", color = "black", size = 0.5),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_line(color = "grey", size = 0.1),
+    legend.position = "none",
+    legend.justification = c(0, 1),
+    legend.background = element_rect(fill = "white", colour = "black"))+
+  labs(x = NULL,y= "") +
+  guides(color = guide_legend(title = "Looks to:"))+
+  scale_color_manual(
+    values = c("mean_target_looks" = "#c41230", "mean_competitor_looks" = "#007bc0", 
+               "mean_dist1_looks" = "#A7A7A9", "mean_dist2_looks" = "#000000"),
+    labels = c("Competitor", "Distractor", "Distractor","Target")
+  )
+
+
+combined_plot <- plot_grid(plot1, plot2, ncol = 1)+
+  draw_label("Antepenultimate (bottom) and penultimate (top) items proportion of looks", x = 0.02, y = 0.5, angle = 90, size = 14)
+combined_plot
+
+ggsave("../visuals/pen_vs_anti_pen.jpeg", plot = combined_plot, width = 6, height = 8, dpi = 300)
+```
+
+
+```{r, warning=FALSE}
+columns_to_center <- c("dprime_battery_up_dur", "dprime_battery_up_formants", 
+                       "dprime_battery_up_ptich", "dprime_battery_up_risetime", 
+                       "mean_working_memory", "lextale_score", "italian_lextale_score", 
+                       "autism_score")
+
+ets_exp1_all_agg_id<-s_exp1_data_all%>%
+  left_join(battery_agg_wider_simp)%>%
+  left_join(digit_cleaned_simp)%>%
+  left_join(lextale_agg_cleaned_simp)%>%
+  left_join(italian_lextale_agg_cleaned_simp)%>%
+  left_join(autism_cleaned)%>%
+  mutate(across(all_of(columns_to_center), ~ . - mean(.), .names = "centered_{.col}")) %>%
+  mutate(across(all_of(columns_to_center), 
+                ~ ifelse(. > mean(.), "above_mean", "below_mean"), 
+                .names = "{.col}_category"))
+  
+summarize_and_plot <- function(data, group_var) {
+  # Summarize the data
+  summarized_data <- data %>%
+    group_by(stress_play, time_rounded, participant.private.id, .data[[group_var]]) %>%
+    summarise(mean_target_looks = mean(target_looks, na.rm = TRUE),
+              mean_competitor_looks = mean(competitor_looks, na.rm = TRUE),
+              mean_dist1_looks = mean(dist1_looks, na.rm = TRUE),
+              mean_dist2_looks = mean(dist2_looks, na.rm = TRUE)) %>%
+    ungroup()%>%
+    pivot_longer(cols=c(mean_target_looks:mean_dist2_looks),names_to = "names",values_to="values")%>%
+    filter(time_rounded<699)
+  
+  # Create the plot for Penultimate stress play
+  plot1 <- summarized_data %>%
+    filter(stress_play == "Penultimate") %>%
+    ggplot(aes(x = time_rounded, y = values, color = .data[[group_var]], group = interaction(.data[[group_var]],names,participant.private.id,stress_play),alpha=.05)) +
+    geom_line()+
+    scale_y_continuous(breaks = seq(0, 1, by = 0.25), labels = seq(0, 1, by = 0.25)) +
+    scale_x_continuous(breaks = seq(min(data$time_rounded, na.rm = TRUE), 
+                                    max(data$time_rounded, na.rm = TRUE), by = 200)) +
+    theme_minimal() +
+    labs(x = NULL, y = "", color = group_var) +
+    guides(color = guide_legend(title = group_var)) +
+    ggtitle(paste("Anti-penultimate -", group_var))+
+    facet_grid(.~names)
+  
+  # Create the plot for Anti-penultimate stress play
+  plot2 <- summarized_data %>%
+    filter(stress_play == "Anti-penultimate") %>%
+    ggplot(aes(x = time_rounded, y = values, color = .data[[group_var]], group = interaction(.data[[group_var]],names,participant.private.id,stress_play),alpha=.05)) +
+    geom_line()+
+    scale_y_continuous(breaks = seq(0, 1, by = 0.25), labels = seq(0, 1, by = 0.25)) +
+    scale_x_continuous(breaks = seq(min(data$time_rounded, na.rm = TRUE), 
+                                    max(data$time_rounded, na.rm = TRUE), by = 200)) +
+    theme_minimal() +
+    labs(x = NULL, y = "", color = group_var) +
+    guides(color = guide_legend(title = group_var)) +
+    ggtitle(paste("Anti-penultimate -", group_var))+
+    facet_grid(.~names)
+  
+  combined_plot <- plot_grid(plot1, plot2, ncol = 1) +
+    draw_label(paste("Antepenultimate (bottom) and Penultimate (top) items proportion of looks by", group_var),
+               x = 0.02, y = 0.5, angle = 90, size = 14,alpha=.5)
+  
+  return(combined_plot)
+}
+
+
+plots_list <- lapply(columns_to_center, function(col) summarize_and_plot(ets_exp1_all_agg_id, col))
+
+for (plot in plots_list) {
+  print(plot)
+}
+```
+
+```{r}
+summarized_data<- ets_exp1_all_agg_id%>%
+    group_by(stress_play, time_rounded, participant.private.id) %>%
+    summarise(mean_target_looks = mean(target_looks, na.rm = TRUE),
+              mean_competitor_looks = mean(competitor_looks, na.rm = TRUE),
+              mean_dist1_looks = mean(dist1_looks, na.rm = TRUE),
+              mean_dist2_looks = mean(dist2_looks, na.rm = TRUE)) %>%
+    ungroup()%>%
+    pivot_longer(cols=c(mean_target_looks:mean_dist2_looks),names_to = "names",values_to="values")
+
+summarized_data_penn<-summarized_data%>%
+  filter(stress_play == "Penultimate")
+
+summarized_data_apenn<-summarized_data%>%
+  filter(stress_play != "Penultimate")
+
+
+plot1<-ets_exp1_all_agg%>%
+  filter(stress_play == "Penultimate") %>%
+  ggplot(aes()) +
+  geom_line(data=summarized_data_penn,aes(x = time_rounded, y = values,group = interaction(names,participant.private.id,stress_play),color=names),alpha=.8,size=.05)+
+  geom_text(data=df_1,aes(label=labels,x = time_rounded, y = values),
+            family = "Arial", size = 4, fontface = "bold")+
+  geom_point(aes(x = time_rounded, y = values, color = names)) +
+  geom_smooth(aes(x = time_rounded, y = values, color = names),se=FALSE)+
+  scale_y_continuous(breaks=seq(0, 1, by = .25),
+                     labels=seq(0, 1, by = .25))+
+  scale_x_continuous(
+    breaks = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    labels = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    minor_breaks = c(0,200,201, 396, 566, 699,800), 
+    position = "bottom")+
+  theme_minimal() +
+  theme(
+    axis.text.x.top = element_text(color = "black"),
+    axis.text.x = element_text(color = "black"),
+    panel.grid.major.x = element_line(color = "grey", size = 0.1),
+    panel.grid.minor.x = element_line(linetype = "dotted", color = "black", size = 0.5),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_line(color = "grey", size = 0.1),
+    legend.position = "none",
+    legend.justification = c(0, 1),
+    legend.background = element_rect(fill = "white", colour = "black"))+
+  labs(x = NULL,y= "") +
+  guides(color = guide_legend(title = "Looks to:"))+
+  scale_color_manual(
+    values = c("mean_target_looks" = "#c41230", "mean_competitor_looks" = "#007bc0", 
+               "mean_dist1_looks" = "#A7A7A9", "mean_dist2_looks" = "#000000"),
+    labels = c("Competitor", "Distractor", "Distractor","Target")
+  )
+
+
+plot2<-ets_exp1_all_agg%>%
+  filter(stress_play == "Anti-penultimate") %>%
+  ggplot(aes()) +
+  geom_line(data=summarized_data_apenn,aes(x = time_rounded, y = values,group = interaction(names,participant.private.id,stress_play),color=names),alpha=.8,size=.05)+
+  geom_text(data=df_2,aes(label=labels,x = time_rounded, y = values),
+            family = "Arial", size = 4, fontface = "bold")+
+  geom_point(aes(x = time_rounded, y = values, color = names)) +
+  geom_smooth(aes(x = time_rounded, y = values, color = names),se=FALSE)+
+  scale_y_continuous(breaks=seq(0, 1, by = .25),
+                     labels=seq(0, 1, by = .25))+
+  scale_x_continuous(
+    breaks = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    labels = seq(min(ets_exp1_all_agg$time_rounded, na.rm = TRUE), 
+                 max(ets_exp1_all_agg$time_rounded, na.rm = TRUE), by = 200),
+    minor_breaks = c(0,200,201, 499, 566, 669,800),
+    position = "bottom")+
+  theme_minimal() +
+  theme(
+    axis.text.x.top = element_text(color = "black"),
+    axis.text.x = element_blank(),
+    panel.grid.major.x = element_line(color = "grey", size = 0.1),
+    panel.grid.minor.x = element_line(linetype = "dotted", color = "black", size = 0.5),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_line(color = "grey", size = 0.1),
+    legend.position = "none",
+    legend.justification = c(0, 1),
+    legend.background = element_rect(fill = "white", colour = "black"))+
+  labs(x = NULL,y= "") +
+  guides(color = guide_legend(title = "Looks to:"))+
+  scale_color_manual(
+    values = c("mean_target_looks" = "#c41230", "mean_competitor_looks" = "#007bc0", 
+               "mean_dist1_looks" = "#A7A7A9", "mean_dist2_looks" = "#000000"),
+    labels = c("Competitor", "Distractor", "Distractor","Target")
+  )+
+  scale_fill_manual(
+    values = c("mean_target_looks" = "#c41230", "mean_competitor_looks" = "#007bc0", 
+               "mean_dist1_looks" = "#A7A7A9", "mean_dist2_looks" = "#000000"),
+    labels = c("Competitor", "Distractor", "Distractor","Target")
+  )
+
+
+combined_plot <- plot_grid(plot1, plot2, ncol = 1)+
+  draw_label("Antepenultimate (bottom) and penultimate (top) items proportion of looks", x = 0.02, y = 0.5, angle = 90, size = 14)
+combined_plot
+
+ggsave("../visuals/pen_vs_anti_pen_id.jpeg", plot = combined_plot, width = 6, height = 8, dpi = 300)
+
+```
+
+
+```{r}
+penn_times<-c(396, 566,699)
+anti_times<-c(499, 566,669)
+
+comp_targ<-s_exp1_data_all%>%
+  ungroup()%>%
+  filter(time_rounded<699)%>%
+  mutate(syllable=case_when(time_rounded<200~0,
+                            stress_play=="Penultimate" & time_rounded>200 &
+                              time_rounded<penn_times[1]~1,
+                            stress_play=="Penultimate" & time_rounded>=penn_times[1] &
+                              time_rounded<mean(penn_times[2],penn_times[3]) ~2,
+                            stress_play=="Penultimate" & time_rounded<=penn_times[3]~3,
+                            stress_play=="Anti-penultimate" & time_rounded>200 &
+                              time_rounded<anti_times[1]~1,
+                            stress_play=="Anti-penultimate" & time_rounded>=anti_times[1] &
+                              time_rounded<mean(anti_times[2],anti_times[3]) ~2,
+                            stress_play=="Anti-penultimate" & time_rounded<=anti_times[3]~3))
+
+
+comp_tar_longer<-comp_targ%>%
+  pivot_longer(cols=c(target_looks:dist2_looks),names_to = "names",values_to="values")%>%
+  mutate(syllable=as.factor(syllable),
+         stress_play=as.factor(stress_play))%>%
+  filter(names=="target_looks"|names=="competitor_looks"|names=="dist1_looks")%>%
+  filter(syllable!=0)
+
+
+contrasts(comp_tar_longer$stress_play)<-c(.5,-.5)
+contrasts(comp_tar_longer$stress_play)
+comp_tar_longer$names<-as.factor(comp_tar_longer$names)
+contrasts(comp_tar_longer$names)
+#data$looks <- factor(data$looks, levels = c("dist1_looks", "dist2_looks", "target_looks", "competitor_looks"))
+
+
+contrasts(factor(comp_tar_longer$names))
+contrasts(comp_tar_longer$stress_play)
+levels(comp_tar_longer$stress_play)<-c("Anti-penultimate","Penultimate")
+levels(comp_tar_longer$stress_play)
+
+# Perform chi-squared test
+#chisq_test <- chisq.test(contingency_table)
+#chisq_test
+
+##commented out ones were run originally but take a long time and did not converge so we have commented them out to make rerunning our analysis more time effective.
+
+#comp_tar_model<-glmer(values~names*stress_play*syllable+(word_play|participant.private.id),data=comp_tar_longer,family = "binomial")
+#comp_tar_model1<-glmer(values~names*stress_play*syllable+(word_play||participant.private.id),data=comp_tar_longer,family = "binomial")
+comp_tar_model2<-glmer(values~names*stress_play*syllable+(1|participant.private.id)+(1|word_play),data=comp_tar_longer,family = "binomial")
+comp_tar_model3<-glmer(values~stress_play+names*syllable+(1|participant.private.id)+(1|word_play),data=comp_tar_longer,family = "binomial")
+comp_tar_model4<-glmer(values~names+stress_play*syllable+(1|participant.private.id)+(1|word_play),data=comp_tar_longer,family = "binomial")
+
+#summary(comp_tar_model)
+#summary(comp_tar_model1)
+summary(comp_tar_model2)
+summary(comp_tar_model3)
+summary(comp_tar_model4)
+
+#anova(comp_tar_model,comp_tar_model1)
+#anova(comp_tar_model1,comp_tar_model2)
+anova(comp_tar_model2,comp_tar_model3)
+anova(comp_tar_model3,comp_tar_model4)
+
+
+#bic_model = BIC(comp_tar_model)
+#bic_model1 = BIC(comp_tar_model1)
+bic_model2 = BIC(comp_tar_model2)
+bic_model3 = BIC(comp_tar_model3)
+bic_model4 = BIC(comp_tar_model4)
+
+#aic_model = AIC(comp_tar_model)
+#aic_model1 = AIC(comp_tar_model1)
+aic_model2 = AIC(comp_tar_model2)
+aic_model3 = AIC(comp_tar_model3)
+aic_model4 = AIC(comp_tar_model4)
+
+#bic_model
+#bic_model1
+bic_model2
+bic_model3
+bic_model4
+
+#aic_model 
+#aic_model1
+aic_model2
+aic_model3
+aic_model4
+```
+
+```{r}
+
+# Function to run models and return models + AIC/BIC values
+run_models <- function(data, target_type) {
+  
+  # Filter data for target_looks or competitor_looks
+  filtered_data <- data %>%
+    filter(names == target_type) %>%
+    filter(syllable != 0)
+  
+  # Full model with random intercepts for participants and words
+  full_model <- glmer(values ~ stress_play * syllable + 
+                      (stress_play| participant.private.id) + (stress_play| word_play), 
+                      data = filtered_data, family = "binomial")
+  
+  # Reduced models
+  reduced_model_1 <- glmer(values ~ stress_play * syllable + 
+                      (stress_play| participant.private.id) + (stress_play| word_play), 
+                      data = filtered_data, family = "binomial")
+
+  reduced_model_2 <- glmer(values ~ stress_play * syllable + 
+                           (1 | participant.private.id) + (1 | word_play), 
+                           data = filtered_data, family = "binomial")
+
+  # Perform ANOVA comparisons
+  anova_results <- anova(full_model, reduced_model_1, reduced_model_2)
+  
+  # Perform AIC and BIC calculations
+  aic_values <- c(full = AIC(full_model), reduced_1 = AIC(reduced_model_1), reduced_2 = AIC(reduced_model_2))
+  bic_values <- c(full = BIC(full_model), reduced_1 = BIC(reduced_model_1), reduced_2 = BIC(reduced_model_2))
+  
+  # Return models and AIC/BIC values
+  list(full_model = full_model, reduced_model_1 = reduced_model_1, reduced_model_2 = reduced_model_2, 
+       anova_results = anova_results, aic_values = aic_values, bic_values = bic_values)
+}
+
+# Run models for target_looks and competitor_looks
+target_results <- run_models(comp_tar_longer, "target_looks")
+competitor_results <- run_models(comp_tar_longer, "competitor_looks")
+
+# Function to check if a model converged
+model_converged <- function(model) {
+  return(is.null(model@optinfo$conv$lme4$messages))
+}
+
+# Function to select the best model based on AIC and convergence check
+select_best_model <- function(models) {
+  
+  # Check if models converged before selecting based on AIC
+  if (!model_converged(models$full_model)) {
+    message("Full model did not converge. Trying reduced models.")
+  } else {
+    message("Full model converged.")
+  }
+  
+  if (!model_converged(models$reduced_model_1)) {
+    message("Reduced model 1 did not converge. Trying reduced model 2.")
+  } else {
+    message("Reduced model 1 converged.")
+  }
+  
+  if (!model_converged(models$reduced_model_2)) {
+    message("Reduced model 2 did not converge. This is the last option.")
+  } else {
+    message("Reduced model 2 converged.")
+  }
+
+  # Compare models based on AIC and select the model with the lowest AIC, only if converged
+  if (model_converged(models$reduced_model_1) && models$aic_values["reduced_1"] < models$aic_values["full"]) {
+    return(models$reduced_model_1)
+  } else if (model_converged(models$full_model)) {
+    return(models$full_model)
+  } else {
+    return(models$reduced_model_2)
+  }
+}
+
+# Select best models for target and competitor
+best_target_model <- select_best_model(target_results)
+best_competitor_model <- select_best_model(competitor_results)
+
+# Print summary of best models
+summary(best_target_model)
+summary(best_competitor_model)
+```
+```{r}
+
+tidy_target_model <- tidy(best_target_model, effects = "fixed") %>%
+  mutate(looks = "Target Looks")
+
+tidy_competitor_model <- tidy(best_competitor_model, effects = "fixed") %>%
+  mutate(looks = "Competitor Looks")
+
+# Combine the two tidied models
+combined_tidy_models <- bind_rows(tidy_target_model, tidy_competitor_model)
+
+# Add other necessary columns and transformations
+combined_tidy_models <- combined_tidy_models %>%
+  mutate(
+    main = ifelse(str_detect(term, ":"), 1, 0),
+    syllable = case_when(
+      str_detect(term, "syllable1") ~ "1",
+      str_detect(term, "syllable2") ~ "1.5",
+      str_detect(term, "syllable3") ~ "2",
+      TRUE ~ "0"),
+    term = str_replace_all(term, c(
+      "syllable1" = "Syllable 1", 
+      "syllable2" = "Syllable 1.5", 
+      "syllable3" = "Syllable 2",
+      "stress_play1" ="Stress Ante")),
+    Significance = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01 ~ "**",
+      p.value < 0.05 ~ "*",
+      TRUE ~ ""),
+  )%>%
+  arrange(syllable, looks,syllable) %>%
+  mutate(
+    row_number = row_number())
+
+# Combine looks for legend
+combined_tidy_models$looks <- factor(combined_tidy_models$looks, levels = c("Target Looks", "Competitor Looks"))
+```
+
+```{r}
+colors <- c("Target Looks" = "#c41230", "Competitor Looks" = "#007bc0")
+#WARNING: combined_tidy_models_legend was created to allow the legend to work. The data is double plotted with the second set of colors with the only purpose of allowing the legend to print correctly. It is just fake filler that is not visable on the viusaliztion so that we can have all for colors in the plot legend
+combined_tidy_models_legend <- combined_tidy_models
+combined_tidy_models_legend$looks <- factor(combined_tidy_models_legend$looks, 
+                                            levels = c("Target Looks", "Competitor Looks"), 
+                                            labels = c("Distractor 1", "Distractor 2"))
+combined_tidy_models$term <- factor(combined_tidy_models$term, levels = unique(combined_tidy_models$term))
+
+
+# Plot the combined models
+pen_anti_model <- ggplot(data = combined_tidy_models, aes(x = estimate, y = term, color = factor(looks))) +
+  geom_point(position = position_dodge(width = 0.5)) + 
+  geom_point(
+    aes(x = estimate, y = term, color = factor(looks)), 
+    position = position_dodge(width = 0.5),
+    data = combined_tidy_models_legend)+
+  geom_point(position = position_dodge(width = 0.5)) +  # Plot points from combined_tidy_models
+  geom_errorbarh(aes(xmin = estimate - 1.96 * std.error, 
+                     xmax = estimate + 1.96 * std.error), 
+                 height = 0,
+                 position = position_dodge(width = 0.5), 
+                 show.legend = FALSE) +
+  labs(title = "", 
+       x = "", 
+       y = "", 
+       color = "Looks to Visual Stimuli") +
+  theme_minimal()+
+  geom_vline(xintercept = 0, color = "black")+
+  coord_flip()+
+  scale_color_manual(
+    values = c("Target Looks" = "#c41230", 
+               "Competitor Looks" = "#007bc0", 
+               "Distractor 1" = "#000000", 
+               "Distractor 2" = "#A7A7A9"),
+    labels = c("\nTarget\n", 
+               "\nCompetitor\n", 
+               "\nDistractor 1\n(not in models)", 
+               "\nDistractor 2\n(not in models)"))+
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.y = element_text(angle = 0, hjust = 1),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    axis.title.y = element_text(hjust = .75, vjust = 0.0),
+    axis.title.x = element_text(hjust = .0, vjust = 0),
+    panel.border = element_blank(),
+    legend.position = "right", # Adjust the position to move the legend down
+    legend.justification = c(0, 0.5),
+    legend.background = element_rect(fill = "white", colour = "white")
+  )+
+  geom_text(
+    aes(y = term, x = -0.5, label = Significance,color = factor(looks)), 
+    hjust = 0, vjust = .5, angle = 90, , show.legend = FALSE,
+    position= position_dodge(width = 0.5))+
+  scale_y_discrete(expand = expansion(add = c(-.9, .7)))
+
+pen_anti_model
+```
+
+#analysis 1 (target vs competitor analysis)
+```{r}
+combined_plot_2 <- plot_grid(plot2,plot1, pen_anti_model, ncol = 1,rel_heights = c(2,2,2))+
+  draw_label("Estimated Coefficients                                       Penultimate                              Antepenultimate ", x = 0.02, y = 0.5, angle = 90, size = 14)
+
+combined_plot_2
+ggsave("../visuals/pen_vs_anti_pen_id_combo.jpeg", plot = combined_plot_2, width = 6, height = 10, dpi = 300)
+```
+
+#analysis 2 (target distributional bias)
+```{r,warning=FALSE}
+tar_longer<-comp_tar_longer%>%
+  filter(names=="target_looks")%>%
+  group_by(word_play,stress_play,syllable,participant.private.id)%>%
+  summarize(tar_prop_o_looks=mean(values))%>%
+  mutate(as.factor(syllable))%>%
+  filter(syllable!=c(0,1))
+  
+levels(tar_longer$syllable)
+levels(tar_longer$stress_play)
+library(lmerTest)
+tar_ana1<-lmerTest::lmer(tar_prop_o_looks~stress_play+(syllable|word_play)+(1|participant.private.id),data=tar_longer)
+tar_ana2<-lmerTest::lmer(tar_prop_o_looks~stress_play+(1|word_play)+(1|participant.private.id),data=tar_longer)
+
+summary(tar_ana1)
+summary(tar_ana2)
+
+bic_tar_ana1 = BIC(tar_ana1)
+bic_tar_ana2 = BIC(tar_ana2)
+
+bic_tar_ana1 
+bic_tar_ana2
+#no significant results here- no bias
+```
+
+########analysis 3 (acoustics)
+```{r}
+acoustic_data <- read.csv(file.path(target_dir, "acoustic_data.csv"))
+
+aco_agg<-acoustic_data%>%
+  group_by(stress,vowel)%>%
+  na.omit()%>%
+  summarize(mean_pitch=mean(mean_pitch),
+            mean_amplitude=mean(mean_amplitude),
+            mean_dur=mean(duration)*1000,
+            mean_tilt=mean(mean_tilt))
+
+acoustic_data<-acoustic_data%>%
+ mutate(
+    stress_play = ifelse(stress == "antipenultimate", "Antepenultimate", "Penultimate"),
+    syllable = ifelse(vowel == "v1", "Vowel 1", "Vowel 2"),
+    syllable=as.factor(syllable),
+    word=tolower(word))%>%
+  select(-X)
+
+acoustic_data_longer<-acoustic_data%>%
+  select(stress_play,syllable,mean_amplitude,mean_pitch,duration,mean_tilt,word)%>%
+  pivot_longer(cols=c(mean_amplitude,mean_pitch,duration,mean_tilt),
+               names_to = "type",
+               values_to = "values")%>%
+  mutate(base = case_when(
+    str_starts(word, "c") ~ str_sub(word, 1, 4), # Remove last 3 characters if starts with 'c'
+    TRUE ~ str_sub(word, 1, 3)                    # Remove last 4 characters otherwise
+  ))
+
+acoustic_data_longer$type <- factor(acoustic_data_longer$type,
+                                    levels = c("mean_amplitude", "mean_pitch", 
+                                               "duration", "mean_tilt"),
+                                    labels = c("Amplitude (dB)", "Pitch (Hz)", 
+                                               "Duration (ms)", "Spectral Tilt"))
+acoustic_data_longer2<-acoustic_data_longer %>%
+  group_by(type) %>%
+  mutate(scaled_value = if (n() > 1) as.numeric(scale(values)) else values) %>%
+  ungroup()
+  
+acoustic_data_longer2 <- acoustic_data_longer2 %>%
+  mutate(custom_x = case_when(
+    paste(syllable, type,sep=".") == "Vowel 1.Amplitude (dB)" ~ 1,
+    paste(syllable, type,sep=".") == "Vowel 2.Amplitude (dB)" ~ 2,
+    paste(syllable, type,sep=".") == "Vowel 1.Pitch (Hz)" ~ 4,
+    paste(syllable, type,sep=".") == "Vowel 2.Pitch (Hz)" ~ 5, 
+    paste(syllable, type,sep=".") == "Vowel 1.Duration (ms)" ~ 7,
+    paste(syllable, type,sep=".") == "Vowel 2.Duration (ms)" ~ 8,
+    paste(syllable, type,sep=".") == "Vowel 1.Spectral Tilt" ~ 10, 
+    paste(syllable, type,sep=".") == "Vowel 2.Spectral Tilt" ~ 11))
+
+
+plot_line <- acoustic_data_longer2 %>%
+  ggplot(aes(x = custom_x, y = scaled_value, color = stress_play, group = word)) +
+  geom_rect(aes(xmin = 2.01, xmax = 3.99, ymin = -Inf, ymax = Inf), fill = "white",color="white") +
+  geom_rect(aes(xmin = 5.01, xmax = 6.99, ymin = -Inf, ymax = Inf), fill = "white",color="white") +
+  geom_rect(aes(xmin = 8.01, xmax = 9.99, ymin = -Inf, ymax = Inf), fill = "white",color="white") +
+  geom_rect(aes(xmin = -Inf, xmax = .99, ymin = -Inf, ymax = Inf), fill = "white",color="white") +
+  geom_rect(aes(xmin = 11.01, xmax = Inf, ymin = -Inf, ymax = Inf), fill = "white",color="white") +
+  geom_point(size = .2) +
+  geom_line(aes(group = interaction(word, stress_play)), alpha = 0.8, size = .1) +
+  facet_wrap(syllable ~ ., ncol = 1) +
+  theme_minimal() +
+  scale_color_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
+  scale_x_continuous(
+    breaks = c(1,2,4,5,7,8,10,11),
+    labels = c("Vowel 1", "Vowel 2", "Vowel 1", "Vowel 2", "Vowel 1", "Vowel 2","Vowel 1", "Vowel 2"),
+    minor_breaks = c(-1,0,1, 2,4,5,7,8,10,11),
+    expand = expansion(mult = c(.075, .06))
+  ) +
+ theme(
+    legend.position = "none",
+    strip.text = element_blank(),
+    strip.background = element_blank(),
+    panel.spacing = unit(0, "lines"),
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(angle = 0, face = "bold"),
+    panel.grid.minor.x = element_blank(), 
+    panel.grid.major.x = element_line(color = "grey80") 
+  ) +
+  labs(title = "", y = "", color = "Stress Play")
+plot_line
+
+```
+
+
+```{r}
+# Assuming acoustic_data_longer2 is your input dataset
+# Prepare the data for polygons
+acoustic_data_longer3 <- acoustic_data_longer2 %>%
+  arrange(syllable, base, stress_play, type) %>%
+  group_by(syllable, base, stress_play) %>%
+  mutate(type = as.factor(type)) %>%
+  mutate(scaled_value = as.numeric(scaled_value)) %>%
+  group_modify(~ {
+    data <- .x
+    if (nrow(data) > 0) {
+      data <- bind_rows(data, data[1,]) # Repeat the first row at the end to close the polygon
+    }
+    data
+  }) %>%
+  ungroup() %>%
+  group_by(word, syllable) %>%
+  mutate(id = row_number()) %>%
+  ungroup()
+
+# Calculate polar coordinates
+acoustic_data_longer3 <- acoustic_data_longer3 %>%
+  group_by(syllable, base, stress_play) %>%
+  mutate(
+    angle = (row_number() - 1) * (360 / n()),
+    x = sin(pi * angle / 180) * scaled_value,
+    y = cos(pi * angle / 180) * scaled_value
+  ) %>%
+  ungroup()
+
+
+# Custom coordinate system to avoid curved lines
+coord_straightpolar <- function(theta = "x", start = 0, direction = 1, clip = "on") {
+  theta <- match.arg(theta, c("x", "y"))
+  r <- if (theta == "x") "y" else "x"
+  ggproto(NULL, CoordPolar, theta = theta, r = r, start = start,
+          direction = sign(direction), clip = clip,
+          is_linear = function() TRUE)
+}
+
+
+# Circular plot with paths and custom labels
+circular_plot_path <- ggplot(acoustic_data_longer3, aes(x = id, y = scaled_value, color = stress_play, group = interaction(syllable, base, stress_play))) +
+  geom_path(size = .1, alpha = .5) +
+  geom_point(size = .2) +
+  facet_wrap(~ syllable,ncol=1) +
+  geom_text(aes(x = id, y = max(acoustic_data_longer3$scaled_value) * 1.1, label = type), size = 3, inherit.aes = FALSE) +
+  coord_straightpolar(start = 0) +
+  theme_minimal() +
+  scale_color_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
+  theme(
+    legend.position = "none",
+    strip.text = element_text(face = "bold"),
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.y = element_blank(),
+    panel.spacing = unit(5, "lines")
+  ) +
+  labs(
+    title = "",
+    x="",
+    y=""
+  )
+
+circular_plot_path
+# Circular plot with polygons
+circular_plot_polygon <- ggplot(acoustic_data_longer3, aes(x = angle, y = scaled_value,color=stress_play, group = interaction(syllable, base, stress_play))) +
+  geom_polygon(aes(fill = stress_play,color=stress_play), alpha = 0.01, size = 0.01) +
+  facet_wrap(stress_play~ syllable) +
+  coord_straightpolar(start = 0) +
+  theme_minimal() +
+  scale_fill_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
+  scale_color_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold"),
+    axis.title.x = element_blank(),
+    axis.text.y = element_blank()
+  ) +
+  labs(
+    title = "",
+    x="",
+    y=""
+  )
+
+circular_plot_polygon
+```
+
+
+
+```{r}
+library(gghalves)
+raw_acoustics<-acoustic_data_longer %>%
+  ggplot() +
+  # Add a white rectangle covering the middle part of the x-axis
+  geom_rect(aes(xmin = 1, xmax = 2, ymin = -Inf, ymax = Inf), fill = "white") +
+  geom_point(aes(x = syllable, y = values, color = stress_play), shape = 95, alpha = 0.8, size = 3, position = position_jitterdodge(jitter.width = 0.0, dodge.width = 0.0)) +
+  geom_half_violin(aes(x = syllable, y = values, color = stress_play), 
+                   alpha = 0.5, side = "l", position = position_nudge(x = -0.), 
+                   data = acoustic_data_longer %>% filter(stress_play == "Penultimate")) +
+  geom_half_violin(aes(x = syllable, y = values, color = stress_play), 
+                   alpha = 0.5, side = "r", position = position_nudge(x = 0.), 
+                   data = acoustic_data_longer %>% filter(stress_play == "Antepenultimate")) +
+  geom_line(aes(x = syllable, y = values, group = interaction(base, stress_play, type, type), color = stress_play,se=FALSE), 
+            alpha = 0.5, size = 0.1) +
+  geom_smooth(aes(x = syllable,  y = values, color = stress_play, 
+                  group = interaction(stress_play, type),fill=stress_play),alpha=.3, method = "lm",size=1,show.legend = FALSE) +
+  geom_smooth(aes(x = syllable,  y = values, 
+                  group = interaction(stress_play, type),fill=stress_play),alpha=.3, color = "white",method = "lm",size=1,linetype="dotted",show.legend = FALSE) +
+  facet_wrap(.~type, scales = "free",ncol=4,) +
+  theme_minimal() +
+  scale_color_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
+    scale_fill_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
+  theme(legend.position = "bottom",
+        legend.background=element_blank())+
+  labs(title = "", x = "", y = "",color = "Stress")+
+  theme(legend.position = "top",
+        strip.placement = "inside",
+        strip.text = element_text(face = "bold", angle = 0),
+        strip.background = element_blank(),
+        panel.spacing = unit(1, "lines"),
+        axis.text.x = element_blank())+
+  guides(color=guide_legend(override.aes=list(fill=NA)))
+raw_acoustics
+
+combined_plot <- plot_grid(
+  raw_acoustics + theme(plot.margin = unit(c(0, 0, 0, 0), "cm")),
+  plot_line + theme(plot.margin = unit(c(-1, 0, 0, 0), "cm")),
+  nrow = 2,  # Two rows
+  rel_heights = c(1, 1))
+combined_plot
+
+ggsave("../visuals/raw_acoustics.jpeg", plot = raw_acoustics , width = 8, height = 6, dpi = 300) 
+ggsave("../visuals/raw_acoustics_combined.jpeg", plot = combined_plot , width = 10, height = 8, dpi = 300) 
+#"          Vowel 1                Vowel 2                                     Vowel 1                Vowel 2"
+```
+
+```{r}
+penn_accoustic_data<-acoustic_data%>%
+  filter(stress_play=="Penultimate")
+ante_penn_accoustic_data<-acoustic_data%>%
+  filter(stress_play!="Penultimate")
+
+levels(penn_accoustic_data$syllable)
+
+# Create a function to run t-tests for each predictor
+run_t_tests <- function(data, predictors, group_var) {
+  results <- data.frame(Predictor = character(), T_value = numeric(), P_value = numeric(), Significance = character(), stringsAsFactors = FALSE)
+  
+  for (predictor in predictors) {
+    cat("Running t-tests for predictor:", predictor, "\n")
+    formula <- as.formula(paste(predictor, "~", group_var))
+    t_test_result <- t.test(formula, data = data)
+    
+    # Determine significance level
+    p_value <- t_test_result$p.value
+    significance <- if (p_value < 0.001) {
+      "***"
+    } else if (p_value < 0.01) {
+      "**"
+    } else if (p_value < 0.05) {
+      "*"
+    } else {
+      ""
+    }
+    
+    # Append results to dataframe
+    results <- rbind(results, data.frame(Predictor = predictor, T_value = t_test_result$statistic, P_value = p_value, Significance = significance))
+  }
+  return(results)
+}
+
+
+# Define the predictors and group variable
+predictors <- c("mean_amplitude", "mean_pitch", "duration","mean_tilt")
+group_var <- "syllable"
+
+# Run t-tests
+t_test_results_penn <- run_t_tests(penn_accoustic_data, predictors, group_var)
+t_test_results_ante_penn <- run_t_tests(ante_penn_accoustic_data, predictors, group_var)
+
+# Print the results
+t_test_results_penn
+t_test_results_ante_penn
+```
+
+
+#analysis 3 target fixation analysis 
+```{r}
+acoustic_data <- read.csv(file.path(target_dir, "acoustic_data.csv"))
+
+aco_agg<-acoustic_data%>%
+  group_by(stress,vowel)%>%
+  na.omit()%>%
+  summarize(mean_pitch=mean(mean_pitch),
+            mean_amplitude=mean(mean_amplitude),
+            mean_dur=mean(duration)*1000,
+            mean_tilt=mean(mean_tilt))
+
+acoustic_data<-acoustic_data%>%
+ mutate(
+    stress_play = ifelse(stress == "antipenultimate", "Anti-penultimate", "Penultimate"),
+    syllable = ifelse(vowel == "v1", 1, 3),
+    syllable=as.factor(syllable),
+    word=tolower(word))%>%
+  select(-X)
+#max models
+ets_binary_analysis_syl_1<-comp_tar_longer%>%
+  pivot_wider(names_from = names,values_from = values)%>%
+  filter(syllable!=2)%>%
+  filter(syllable!=0)%>%
+  mutate(word=target)%>%
+  left_join(acoustic_data)%>%
+  filter(syllable==1)%>%
+  mutate(mean_pitch_scaled = scale(mean_pitch),
+         mean_amplitude_scaled = scale(mean_amplitude),
+         mean_tilt_scaled = scale(mean_tilt),
+         duration_scaled = scale(duration))
+
+ap_data_1<-ets_binary_analysis_syl_1%>%filter(stress_play!="Penultimate")
+pp_data_1<-ets_binary_analysis_syl_1%>%filter(stress_play=="Penultimate")
+
+mod_full<-glmer(target_looks~(mean_pitch_scaled+mean_amplitude_scaled+mean_tilt_scaled+duration_scaled)^2
+                +(1|word),family=binomial, data= ap_data_1)
+
+mod_full_2<-glmer(target_looks~(mean_pitch_scaled+mean_amplitude_scaled+mean_tilt_scaled+duration_scaled)^2
+                +(1|word),family=binomial, data= pp_data_1)
+
+ets_binary_analysis_syl_3<-comp_tar_longer%>%
+  pivot_wider(names_from = names,values_from = values)%>%
+  filter(syllable!=2)%>%
+  filter(syllable!=0)%>%
+  mutate(word=target)%>%
+  left_join(acoustic_data)%>%
+  filter(syllable==3)%>%
+  mutate(mean_pitch_scaled = scale(mean_pitch),
+         mean_amplitude_scaled = scale(mean_amplitude),
+         mean_tilt_scaled = scale(mean_tilt),
+         duration_scaled = scale(duration))
+
+ap_data_3<-ets_binary_analysis_syl_3%>%filter(stress_play!="Penultimate")
+pp_data_3<-ets_binary_analysis_syl_3%>%filter(stress_play=="Penultimate")
+
+mod_full_1_3<-glmer(target_looks~(mean_pitch_scaled+mean_amplitude_scaled+mean_tilt_scaled+duration_scaled)^2
+                +(1|word),family=binomial, data= ap_data_3)
+
+mod_full_2_3<-glmer(target_looks~(mean_pitch_scaled+mean_amplitude_scaled+mean_tilt_scaled+duration_scaled)^2
+                +(1|word),family=binomial, data= pp_data_3)
+
+```
+
+```{r}
+# Function to perform backward elimination
+backward_elimination <- function(model, data) {
+  current_model <- model
+  current_aic <- AIC(current_model)
+  
+  repeat {
+    # Get model terms
+    terms <- attr(terms(current_model), "term.labels")
+    
+    # Check if the model has only one term left
+    if (length(terms) == 1) break
+    
+    # Try removing each term and calculate the AIC
+    aics <- sapply(terms, function(term) {
+      new_formula <- as.formula(paste(". ~ . -", term))
+      new_model <- update(current_model, new_formula)
+      AIC(new_model)
+    })
+    
+    # Find the term whose removal decreases the AIC the most
+    best_term <- names(which.min(aics))
+    best_aic <- min(aics)
+    
+    # Stop if no improvement in AIC
+    if (best_aic >= current_aic) break
+    
+    # Update the current model and AIC
+    current_model <- update(current_model, as.formula(paste(". ~ . -", best_term)))
+    current_aic <- best_aic
+  }
+  
+  return(current_model)
+}
+
+summary(mod_full)
+summary(mod_full_2)
+
+summary(mod_full_1_3)
+summary(mod_full_2_3)
+
+simplified_ap_mod_1 <- backward_elimination(mod_full, ap_data_1)
+
+simplified_pp_mod_1 <- backward_elimination(mod_full_2, pp_data_1)
+
+simplified_ap_mod_3 <- backward_elimination(mod_full_1_3, ap_data_3)
+
+simplified_pp_mod_3 <- backward_elimination(mod_full_2_3, pp_data_3)
+
+
+summary(simplified_ap_mod_1)
+summary(simplified_pp_mod_1)
+summary(simplified_ap_mod_3)
+summary(simplified_pp_mod_3)
+```
+
+
+```{r}
+# Extract summaries for each model
+tidy_full <- tidy(simplified_ap_mod_1, effects = "fixed")
+tidy_full_2 <- tidy(simplified_pp_mod_1, effects = "fixed")
+tidy_full_1_3 <- tidy(simplified_ap_mod_3, effects = "fixed")
+tidy_full_2_3 <- tidy(simplified_pp_mod_3, effects = "fixed")
+
+# Add a model identifier
+tidy_full$model <- "Antepenultimate"
+tidy_full_2$model <- "Penultimate"
+tidy_full_1_3$model <- "Antepenultimate"
+tidy_full_2_3$model <- "Penultimate"
+
+tidy_full$syllable <- 1
+tidy_full_2$syllable <- 1
+tidy_full_1_3$syllable <- 3
+tidy_full_2_3$syllable <- 3
+
+# Combine the summaries into one data frame
+tidy_combined <- bind_rows(tidy_full, tidy_full_2, tidy_full_1_3, tidy_full_2_3)
+names<-tidy_combined
+# Add a significance marker
+tidy_combined <- tidy_combined %>%
+  mutate(Significance = case_when(
+    p.value < 0.001 ~ "***",
+    p.value < 0.01 ~ "**",
+    p.value < 0.05 ~ "*",
+    TRUE ~ ""
+  ))%>%
+  mutate(term = str_replace_all(term, "1", "")) %>%
+  mutate(term = str_replace_all(term, "2", "")) %>%
+  mutate(term = str_replace_all(term, "3", "")) %>%
+  mutate(term = str_replace_all(term, "_", "")) %>%
+  mutate(term = str_replace_all(term, "dprime battery up", "(battery d')")) %>%
+  mutate(term = str_replace_all(term, "mean", "")) %>%
+  mutate(term = str_replace_all(term, "italian lextale score", "lextale (Italian)")) %>%
+  mutate(term = str_replace_all(term, "lextale score", "lextale (English)")) %>%
+  mutate(term = str_replace_all(term, "scaled", "")) %>%
+  mutate(term = str_replace_all(term, "dprime", "")) %>%
+  mutate(term = str_replace_all(term, "Autism score", "score")) %>%
+  mutate(term = str_replace_all(term, "tilt", "spectral tilt")) %>%
+  mutate(term = str_replace_all(term, "(battery d') dur", "(battery d') duration"))%>%
+  mutate(interaction_label = case_when(
+           str_detect(term, "Intercept") ~ 1,
+           str_detect(term, ":") ~ 3,
+           TRUE ~ 2
+         ))
+
+ordered_terms_order <- tidy_combined %>%
+  arrange(interaction_label) %>%
+  pull(term) %>%
+  unique()
+
+
+# Set factor levels for term
+tidy_combined$term <- factor(tidy_combined$term, levels = ordered_terms_order)
+
+custom_labels <- c(`1` = "Syllable 1", `3` = "Syllable 2")
+# Plot for all models
+analysis_3_plot <- ggplot(tidy_combined, aes(x = estimate, y = term, color = model)) +
+  geom_point(position = position_dodge(width = 0.5), size = 3) +
+  geom_errorbarh(aes(xmin = estimate - 1.96 * std.error, xmax = estimate + 1.96 * std.error), 
+                 height = 0, position = position_dodge(width = 0.5), size = 1) +
+  labs(title = "", x = "Estimate", y = "",color = "Model Type") +
+  theme_minimal() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  facet_grid(. ~ syllable, labeller = labeller(syllable = custom_labels),scales="free") +
+  geom_text(aes(label = Significance, x = 1.5), vjust = 0.5, position = position_dodge(width = 0.5),show.legend = FALSE) +
+  scale_color_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
+  theme(legend.position = "none")+
+  scale_x_continuous(limits = c(-3.5, 1.75))
+# Print the plot
+analysis_3_plot 
+
+ggsave("../visuals/analysis_3_plot.jpeg", plot = analysis_3_plot , width = 8, height = 5, dpi = 300)
+````
+
+3.1.4 without interactions:
+```{r}
+# Function to perform backward elimination
+backward_elimination <- function(model, data) {
+  current_model <- model
+  current_aic <- AIC(current_model)
+  
+  repeat {
+    # Get model terms
+    terms <- attr(terms(current_model), "term.labels")
+    
+    # Check if the model has only one term left
+    if (length(terms) == 1) break
+    
+    # Try removing each term and calculate the AIC
+    aics <- sapply(terms, function(term) {
+      new_formula <- as.formula(paste(". ~ . -", term))
+      new_model <- update(current_model, new_formula)
+      AIC(new_model)
+    })
+    
+    # Find the term whose removal decreases the AIC the most
+    best_term <- names(which.min(aics))
+    best_aic <- min(aics)
+    
+    # Stop if no improvement in AIC
+    if (best_aic >= current_aic) break
+    
+    # Update the current model and AIC
+    current_model <- update(current_model, as.formula(paste(". ~ . -", best_term)))
+    current_aic <- best_aic
+  }
+  
+  return(current_model)
+}
+```
+
+
+```{r}
+mod_full_ni<-glmer(target_looks~(mean_pitch_scaled+mean_amplitude_scaled+mean_tilt_scaled+duration_scaled)
+                +(1|word),family=binomial, data= ap_data_1)
+
+mod_full_2_ni<-glmer(target_looks~(mean_pitch_scaled+mean_amplitude_scaled+mean_tilt_scaled+duration_scaled)
+                +(1|word),family=binomial, data= pp_data_1)
+
+mod_full_1_3_ni<-glmer(target_looks~(mean_pitch_scaled+mean_amplitude_scaled+mean_tilt_scaled+duration_scaled)
+                +(1|word),family=binomial, data= ap_data_3)
+
+mod_full_2_3_ni<-glmer(target_looks~(mean_pitch_scaled+mean_amplitude_scaled+mean_tilt_scaled+duration_scaled)
+                +(1|word),family=binomial, data= pp_data_3)
+
+summary(mod_full_ni)
+summary(mod_full_2_ni)
+
+summary(mod_full_1_3_ni)
+summary(mod_full_2_3_ni)
+
+simplified_ap_mod_1_ni <- backward_elimination(mod_full_ni, ap_data_1)
+
+simplified_pp_mod_1_ni <- backward_elimination(mod_full_2_ni, pp_data_1)
+
+simplified_ap_mod_3_ni <- backward_elimination(mod_full_1_3_ni, ap_data_3)
+
+simplified_pp_mod_3_ni <- backward_elimination(mod_full_2_3_ni, pp_data_3)
+
+
+summary(simplified_ap_mod_1)
+summary(simplified_pp_mod_1)
+summary(simplified_ap_mod_3)
+summary(simplified_pp_mod_3)
+```
+
+
+
+```{r}
+# Extract summaries for each model
+tidy_full_ni <- tidy(simplified_ap_mod_1_ni, effects = "fixed")
+tidy_full_2_ni <- tidy(simplified_pp_mod_1_ni, effects = "fixed")
+tidy_full_1_3_ni <- tidy(simplified_ap_mod_3_ni, effects = "fixed")
+tidy_full_2_3_ni <- tidy(simplified_pp_mod_3_ni, effects = "fixed")
+
+# Add a model identifier
+tidy_full_ni$model <- "Antepenultimate"
+tidy_full_2_ni$model <- "Penultimate"
+tidy_full_1_3_ni$model <- "Antepenultimate"
+tidy_full_2_3_ni$model <- "Penultimate"
+
+tidy_full_ni$syllable <- 1
+tidy_full_2_ni$syllable <- 1
+tidy_full_1_3_ni$syllable <- 3
+tidy_full_2_3_ni$syllable <- 3
+
+# Combine the summaries into one data frame
+tidy_combined_ni <- bind_rows(tidy_full_ni, tidy_full_2_ni, tidy_full_1_3_ni, tidy_full_2_3_ni)
+
+# Add a significance marker
+tidy_combined_ni <- tidy_combined_ni %>%
+  mutate(Significance = case_when(
+    p.value < 0.001 ~ "***",
+    p.value < 0.01 ~ "**",
+    p.value < 0.05 ~ "*",
+    TRUE ~ ""
+  ))%>%
+  mutate(term = str_replace_all(term, "1", "")) %>%
+  mutate(term = str_replace_all(term, "2", "")) %>%
+  mutate(term = str_replace_all(term, "3", "")) %>%
+  mutate(term = str_replace_all(term, "_", "")) %>%
+  mutate(term = str_replace_all(term, "dprime battery up", "(battery d')")) %>%
+  mutate(term = str_replace_all(term, "mean", "")) %>%
+  mutate(term = str_replace_all(term, "italian lextale score", "lextale (Italian)")) %>%
+  mutate(term = str_replace_all(term, "lextale score", "lextale (English)")) %>%
+  mutate(term = str_replace_all(term, "scaled", "")) %>%
+  mutate(term = str_replace_all(term, "dprime", "")) %>%
+  mutate(term = str_replace_all(term, "Autism score", "score")) %>%
+  mutate(term = str_replace_all(term, "tilt", "spectral tilt")) %>%
+  mutate(term = str_replace_all(term, "(battery d') dur", "(battery d') duration"))%>%
+  mutate(interaction_label = case_when(
+           str_detect(term, "Intercept") ~ 1,
+           str_detect(term, ":") ~ 3,
+           TRUE ~ 2
+         ))
+
+ordered_terms_order_ni <- tidy_combined_ni %>%
+  arrange(interaction_label) %>%
+  pull(term) %>%
+  unique()
+
+
+# Set factor levels for term
+tidy_combined_ni$term <- factor(tidy_combined_ni$term, levels = ordered_terms_order_ni)
+
+custom_labels <- c(`1` = "Syllable 1", `3` = "Syllable 2")
+# Plot for all models
+analysis_3_plot_ni <- ggplot(tidy_combined_ni, aes(x = estimate, y = term, color = model)) +
+  geom_point(position = position_dodge(width = 0.5), size = 3) +
+  geom_errorbarh(aes(xmin = estimate - 1.96 * std.error, xmax = estimate + 1.96 * std.error), 
+                 height = 0, position = position_dodge(width = 0.5), size = 1) +
+  labs(title = "", x = "Estimate", y = "",color = "Model Type") +
+  theme_minimal() +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  facet_grid(. ~ syllable, labeller = labeller(syllable = custom_labels),scales="free") +
+  geom_text(aes(label = Significance, x = .5), vjust = 0.5, position = position_dodge(width = 0.5),show.legend = FALSE) +
+  scale_color_manual(values = c("Antepenultimate" = "#E77500", "Penultimate" = "#000000")) +
+  theme(legend.position = "bottom")+
+  scale_x_continuous(limits = c(-1.25, .75))
+# Print the plot
+analysis_3_plot_ni
+
+ggsave("../visuals/analysis_3_plot_ni.jpeg", plot = analysis_3_plot_ni , width = 8, height = 5, dpi = 300)
+```
+```{r}
+
+combined_plot_o_n <- plot_grid(analysis_3_plot_ni, analysis_3_plot, labels = c("Simple Model", "Interaction Model"), ncol = 2)
+combined_plot_o_n
+
+ggsave("../visuals/combined_plot_o_n.jpeg", plot = combined_plot_o_n , width = 8, height = 5, dpi = 300)
+```
+
+#competitor looks analyses
+```{r}
+#
+#comp_mod_full<-glmer(competitor_looks~mean_pitch_scaled*mean_amplitude_scaled*mean_tilt_scaled*duration_scaled
+#                +(1|word),family=binomial, data= ap_data)
+
+#comp_mod_full_2<-glmer(competitor_looks~mean_pitch_scaled*mean_amplitude_scaled*mean_tilt_scaled*duration_scaled
+#                +(1|word),family=binomial, data= pp_data)
+
+#comp_mod_full_1_3<-glmer(competitor_looks~mean_pitch_scaled*mean_amplitude_scaled*mean_tilt_scaled*duration_scaled
+#                +(1|word),family=binomial, data= ap_data_3)
+
+#comp_mod_full_2_3<-glmer(competitor_looks~mean_pitch_scaled*mean_amplitude_scaled*mean_tilt_scaled*duration_scaled
+ #               +(1|word),family=binomial, data= pp_data_3)
+
+#summary(comp_mod_full)
+#summary(comp_mod_full_2)
+
+#summary(comp_mod_full_1_3)
+#summary(comp_mod_full_2_3)
+
+```
+
+#individual differences for target and competitor fixations
+#This analysis over fixation is only for testing the method. The actual one is below
+```{r}
+comp_tar_longer_id<-comp_tar_longer%>%
+  left_join(battery_agg_wider_simp)%>%
+  left_join(digit_cleaned_simp)%>%
+  left_join(lextale_agg_cleaned_simp)%>%
+  left_join(italian_lextale_agg_cleaned_simp)%>%
+  left_join(autism_cleaned)%>%
+  filter(syllable!=0)%>%
+  filter(names=="target_looks")
+comp_tar_longer_id_penn<-comp_tar_longer_id%>%filter(stress_play=="Penultimate")
+comp_tar_longer_id_a_penn<-comp_tar_longer_id%>%filter(stress_play!="Penultimate")
+```
+lASSO Function
+
+
+
+```{r}
+fit_models <- function(data, stress_filter) {
+  # Filter the data
+  data_filtered <- data %>% filter(stress_play == stress_filter)
+  data_filtered <- na.omit(data_filtered)
+  
+  # Create the design matrix and response vector
+  x <- model.matrix(values ~ syllable * (dprime_battery_up_dur + dprime_battery_up_ptich + dprime_battery_up_risetime + dprime_battery_up_formants + lextale_score + autism_score + italian_lextale_score+mean_working_memory), data = data_filtered)[, -1]
+  y <- data_filtered$values
+  
+  # Set up lambda values for LASSO regression
+  lambda_search_space <- 10^seq(10, -2, length = 100)
+  
+  # Fit the LASSO regression model
+  lasso_model <- glmnet(x, y, alpha = 1, lambda = lambda_search_space, family = "binomial")
+  
+  # Cross-validation to find the best lambda
+  cv <- cv.glmnet(x, y, alpha = 1, family = "binomial")
+  best_lambda <- cv$lambda.min
+  
+  # Extract coefficients for the best lambda
+  coef_lasso_best <- coef(lasso_model, s = best_lambda)
+  
+  # Convert coefficients to data frame for visualization
+  coef_df <- as.data.frame(as.matrix(coef_lasso_best))
+  coef_df$Predictor <- rownames(coef_df)
+  rownames(coef_df) <- NULL
+  
+  # Visualize the coefficients
+  coef_plot <- ggplot(coef_df, aes(x = Predictor, y = s1)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    labs(title = paste("LASSO Regression Coefficients at Best Lambda (", round(best_lambda, 4), ")", sep = ""),
+         x = "Predictor",
+         y = "Coefficient Value") +
+    theme_minimal()
+  print(coef_plot)
+  
+  # Select significant variables based on LASSO coefficients
+  significant_vars <- coef_df %>%
+    filter(s1 != 0) %>%
+    pull(Predictor)
+  
+  # Clean up the variable names by replacing syllable1, syllable2, and syllable3 with syllable
+  significant_vars <- gsub("syllable[123]", "syllable", significant_vars)
+  
+  # Remove duplicate variables
+  significant_vars <- unique(significant_vars)
+  
+  # Prepare formula for GLMM using significant variables
+  significant_vars <- significant_vars[significant_vars != "(Intercept)"] # Remove intercept if present
+  formula_str <- paste("values ~", paste(significant_vars, collapse = " + "), "+ (1|word_play)")
+  
+  # Convert the string to a formula object
+  formula <- as.formula(formula_str)
+  
+  # Fit GLMM with selected variables
+  model_selected <- glmer(formula, data = data_filtered, family = "binomial")
+  
+  # Print the summary of the GLMM
+  print(summary(model_selected))
+  
+  # Return the summary and the plot
+  list(summary = summary(model_selected), plot = coef_plot)
+}
+```
+
+```{r}
+comp_tar_longer_id <- comp_tar_longer %>%
+  left_join(battery_agg_wider_simp) %>%
+  left_join(digit_cleaned_simp) %>%
+  left_join(lextale_agg_cleaned_simp) %>%
+  left_join(italian_lextale_agg_cleaned_simp) %>%
+  left_join(autism_cleaned) %>%
+  #filter(syllable != 0) %>%
+  #filter(syllable != 2) %>%
+  filter(names == "target_looks")
+
+# Fit models for Penultimate stress
+summary_penultimate <- fit_models(comp_tar_longer_id, "Penultimate")
+
+# Fit models for non-Penultimate stress
+summary_anti_penultimate <- fit_models(comp_tar_longer_id, "Anti-penultimate")
+
+
+summary_penultimate$summary
+summary_anti_penultimate$summary
+
+summary_penultimate$plot
+summary_anti_penultimate$plot
+```
+Individual differences analysis---- This is the analysis in the paper
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(conflicted)
+#parts_kept<-ets_exp1_all_agg_part_wider%>%ungroup%>%select(participant.private.id)%>%unique()%>%count()
+#write.csv(ets_exp1_all_agg_part_wider, "../../ppcc_iflu_data/ets_exp1_all_agg_part_wider.csv")
+
+
+id_data<-battery_agg_wider_simp%>%
+  left_join(digit_cleaned_simp)%>%
+  left_join(lextale_agg_cleaned_simp)%>%
+  left_join(italian_lextale_agg_cleaned_simp)%>%
+  left_join(autism_cleaned)
+
+measures <- id_data %>%
+  select(participant.private.id, starts_with("dprime_battery_up_"), mean_working_memory, 
+         lextale_score, italian_lextale_score, autism_score) %>%
+  mutate(across(starts_with("dprime_battery_up_") | ends_with("score") | 
+                  starts_with("mean_working_memory"), scale, .names = "scaled_{col}"))
+
+
+long_data <- measures %>%
+  select(participant.private.id, contains("scaled_")) %>%
+  pivot_longer(-participant.private.id, names_to = "measure", values_to = "value") %>%
+  mutate(measure = gsub("scaled_", "", measure))%>%
+  mutate(old_term = measure) %>%
+  mutate(measure = str_replace_all(measure, "_", " ")) %>%
+  mutate(measure = str_replace_all(measure, "dprime battery up", "(Battery d') \n")) %>%
+  mutate(measure = str_replace_all(measure, "mean", "")) %>%
+  mutate(measure = str_replace_all(measure, "italian lextale score", "LexITA")) %>%
+  mutate(measure = str_replace_all(measure, "lextale score", "LexTALE")) %>%
+  mutate(measure = str_replace_all(measure, "scaled", "")) %>%
+  mutate(measure = str_replace_all(measure, "dprime", "")) %>%
+  mutate(measure = str_replace_all(measure, "autism score", "AQ")) %>%
+  mutate(measure = str_replace_all(measure, "tilt", "spec tilt")) %>%
+  mutate(measure = str_replace_all(measure, "dur", "Duration"))%>%
+mutate(measure = str_replace_all(measure, "work", "Work"))%>%
+  mutate(measure = str_replace_all(measure, "ptich", "Pitch"))%>%
+  mutate(measure = str_replace_all(measure, "rise", "Rise "))%>%
+  mutate(measure = str_replace_all(measure, "formants", "Formants"))
+
+
+library(gghalves)
+plot<-ggplot(long_data, aes(x = measure, y = value)) +
+  geom_half_violin(trim = FALSE, fill = NA, color = "black", side = "l") +
+  geom_half_boxplot(width = 0.15, outlier.shape = NA, fill = NA, color = "black", side = "r") +
+  geom_point(shape = 95, color = "#1F4C4C", size = 10, alpha = 0.3, position = position_nudge(x = -0.1)) +
+  labs(title = "",
+       x = "Task Measures",
+       y = "Centered Values") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.title.x.top = element_text(),
+        axis.title.x = element_blank(),
+        axis.text.x.top = element_text(),
+        axis.text.x = element_blank(),
+        axis.ticks.x.top = element_line(),
+        axis.ticks.x = element_blank(),
+        axis.line.x.top = element_line(),
+        axis.line.x = element_blank()) +
+  scale_x_discrete(position = "top")
+
+plot
+ggsave("../visuals/plot_raw_task.jpeg", plot = plot , width = 10, height = 5, dpi = 300)
+```
+
+```{r}
+fit_models_acoustic_id <- function(data) {
+  # Filter the data
+  data_filtered <- na.omit(data)
+
+  # Step 1: Extract acoustic variables directly from the 'names' dataframe
+  # Assuming 'names' is a global dataframe or exists within the environment
+  acoustic_vars <- unique(names$term)
+
+  # Remove intercept or any unwanted variables from acoustic_vars
+  acoustic_vars <- acoustic_vars[acoustic_vars != "(Intercept)"]
+
+  # Define sensitivity measures for the relevant acoustic variables
+  sensitivity_measures <- "(dprime_battery_up_dur + dprime_battery_up_ptich + dprime_battery_up_risetime + dprime_battery_up_formants)"
+
+  # Dynamically build the acoustic interaction terms
+  acoustic_interactions <- paste(acoustic_vars, collapse = "+")
+
+  # Create the maximal model formula string
+  formula_str <- paste("target_looks ~ autism_score + italian_lextale_score + lextale_score + mean_working_memory +",
+                       sensitivity_measures, "*", "(", acoustic_interactions, ")")
+
+  # Convert the formula string into an actual formula object
+  formula <- as.formula(formula_str)
+
+  # Step 2: Create the design matrix and response vector based on the maximal model
+  x <- model.matrix(formula, data = data_filtered)[, -1]  # Exclude intercept
+  y <- data_filtered$target_looks
+  
+  # Step 3: Perform LASSO regression on the design matrix and response vector
+  lambda_search_space <- 10^seq(10, -2, length = 100)
+
+  # Fit the LASSO regression model
+  lasso_model <- glmnet(x, y, alpha = 1, lambda = lambda_search_space, family = "binomial")
+
+  # Cross-validation to find the best lambda
+  cv <- cv.glmnet(x, y, alpha = 1, family = "binomial")
+  best_lambda <- cv$lambda.min
+
+  # Extract coefficients for the best lambda
+  coef_lasso_best <- coef(lasso_model, s = best_lambda)
+
+  # Convert coefficients to data frame for visualization
+  coef_df <- as.data.frame(as.matrix(coef_lasso_best))
+  coef_df$Predictor <- rownames(coef_df)
+  rownames(coef_df) <- NULL
+
+  # Visualize the coefficients
+  coef_plot <- ggplot(coef_df, aes(x = Predictor, y = s1)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    labs(title = paste("LASSO Regression Coefficients at Best Lambda (", round(best_lambda, 4), ")", sep = ""),
+         x = "Predictor",
+         y = "Coefficient Value") +
+    theme_minimal()
+  print(coef_plot)
+
+  # Step 4: Select significant variables based on LASSO coefficients and clean them
+  significant_vars <- coef_df %>%
+    filter(s1 != 0) %>%
+    pull(Predictor)
+
+  # Remove intercept from significant variables
+  significant_vars <- significant_vars[significant_vars != "(Intercept)"]
+
+  # Step 5: Prepare final formula for GLMM using significant variables from LASSO
+  formula_str <- paste("target_looks ~", paste(significant_vars, collapse = " + "), "+ (1|word)")
+  formula <- as.formula(formula_str)
+
+  # Step 6: Fit GLMM with selected variables
+  model_selected <- glmer(formula, data = data_filtered, family = "binomial")
+
+  # Print the summary of the GLMM
+  print(summary(model_selected))
+
+  # Return the summary and the plot
+  list(summary = summary(model_selected), plot = coef_plot, lasso_coefs = coef_df)
+}
+
+```
+
+```{r}
+fit_models_acoustic_id <- function(data) {
+  # Filter the data
+  data_filtered <- na.omit(data)
+  
+  # Create the design matrix and response vector
+  x <- model.matrix(target_looks ~ autism_score + 
+                                      italian_lextale_score + 
+                                      lextale_score+mean_working_memory+
+                      (dprime_battery_up_dur + 
+                                      dprime_battery_up_ptich + 
+                                      dprime_battery_up_risetime + 
+                                      dprime_battery_up_formants)*
+                      (mean_pitch_scaled+
+                         duration_scaled+
+                         mean_amplitude_scaled+
+                         mean_tilt_scaled), data = data_filtered)[, -1]
+  y <- data_filtered$target_looks
+  
+  # Set up lambda values for LASSO regression
+  lambda_search_space <- 10^seq(10, -2, length = 100)
+  
+  # Fit the LASSO regression model
+  lasso_model <- glmnet(x, y, alpha = 1, lambda = lambda_search_space, family = "binomial")
+  
+  # Cross-validation to find the best lambda
+  cv <- cv.glmnet(x, y, alpha = 1, family = "binomial")
+  best_lambda <- cv$lambda.min
+  
+  # Extract coefficients for the best lambda
+  coef_lasso_best <- coef(lasso_model, s = best_lambda)
+  
+  # Convert coefficients to data frame for visualization
+  coef_df <- as.data.frame(as.matrix(coef_lasso_best))
+  coef_df$Predictor <- rownames(coef_df)
+  rownames(coef_df) <- NULL
+  
+  # Visualize the coefficients
+  coef_plot <- ggplot(coef_df, aes(x = Predictor, y = s1)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    labs(title = paste("LASSO Regression Coefficients at Best Lambda (", round(best_lambda, 4), ")", sep = ""),
+         x = "Predictor",
+         y = "Coefficient Value") +
+    theme_minimal()
+  print(coef_plot)
+  
+  # Select significant variables based on LASSO coefficients
+  significant_vars <- coef_df %>%
+    filter(s1 != 0) %>%
+    pull(Predictor)
+  
+  # Clean up the variable names by replacing syllable1, syllable2, and syllable3 with syllable
+  significant_vars <- gsub("syllable[123]", "syllable", significant_vars)
+  
+  # Remove duplicate variables
+  significant_vars <- unique(significant_vars)
+  
+  # Prepare formula for GLMM using significant variables
+  significant_vars <- significant_vars[significant_vars != "(Intercept)"] # Remove intercept if present
+  formula_str <- paste("target_looks ~", paste(significant_vars, collapse = " + "), "+ (1|word)+(1|participant.private.id)")
+  
+  # Convert the string to a formula object
+  formula <- as.formula(formula_str)
+  formula
+  # Fit GLMM with selected variables
+  model_selected <- glmer(formula, data = data_filtered, family = "binomial")
+  
+  # Print the summary of the GLMM
+  print(summary(model_selected))
+  
+  # Return the summary and the plot
+  list(summary = summary(model_selected), plot = coef_plot,lasso_coefs = coef_df)
+}
+```
+
+```{r}
+# Prepare datasets
+ap_data_1_id <- ap_data_1 %>%
+  left_join(battery_agg_wider_simp) %>%
+  left_join(digit_cleaned_simp) %>%
+  left_join(lextale_agg_cleaned_simp) %>%
+  left_join(italian_lextale_agg_cleaned_simp) %>%
+  left_join(autism_cleaned)
+
+ap_data_3_id <- ap_data_3 %>%
+  left_join(battery_agg_wider_simp) %>%
+  left_join(digit_cleaned_simp) %>%
+  left_join(lextale_agg_cleaned_simp) %>%
+  left_join(italian_lextale_agg_cleaned_simp) %>%
+  left_join(autism_cleaned)
+
+
+pp_data_1_id <- pp_data_1 %>%
+  left_join(battery_agg_wider_simp) %>%
+  left_join(digit_cleaned_simp) %>%
+  left_join(lextale_agg_cleaned_simp) %>%
+  left_join(italian_lextale_agg_cleaned_simp) %>%
+  left_join(autism_cleaned)
+
+pp_data_3_id <- pp_data_3 %>%
+  left_join(battery_agg_wider_simp) %>%
+  left_join(digit_cleaned_simp) %>%
+  left_join(lextale_agg_cleaned_simp) %>%
+  left_join(italian_lextale_agg_cleaned_simp) %>%
+  left_join(autism_cleaned)
+
+
+result_ap_data_1 <- fit_models_acoustic_id(ap_data_1_id)
+result_pp_data_1 <- fit_models_acoustic_id(pp_data_1_id)
+result_ap_data_3 <- fit_models_acoustic_id(ap_data_3_id)
+result_pp_data_3 <- fit_models_acoustic_id(pp_data_3_id)
+
+
+# Print summaries and display plots
+print(result_pp_data_1$summary)
+print(result_ap_data_1$summary)
+print(result_pp_data_3$summary)
+print(result_ap_data_3$summary)
+
+
+print(result_ap_data_1$plot)
+print(result_pp_data_1$plot)
+print(result_ap_data_3$plot)
+print(result_pp_data_3$plot)
+```
+
+
+```{r}
+library(ggtext)
+
+# Define variables
+acoustic_vars <- c("mean_pitch_scaled", "mean_amplitude_scaled", "mean_tilt_scaled", "duration_scaled")
+id_vars <- c("dprime_battery_up_dur", "dprime_battery_up_ptich", "dprime_battery_up_risetime", "dprime_battery_up_formants", "lextale_score", "autism_score", "italian_lextale_score", "mean_working_memory")
+
+# Convert the summaries into data frames
+result_ap_data_1_coefs <- as.data.frame(result_ap_data_1$summary$coef)
+result_ap_data_1_coefs$model <- "ap_data_1"
+result_ap_data_1_coefs$syllable <- "Syllable 1"
+result_ap_data_3_coefs <- as.data.frame(result_ap_data_3$summary$coef)
+result_ap_data_3_coefs$model <- "ap_data_3"
+result_ap_data_3_coefs$syllable <- "Syllable 2"
+result_pp_data_1_coefs <- as.data.frame(result_pp_data_1$summary$coef)
+result_pp_data_1_coefs$model <- "pp_data_1"
+result_pp_data_1_coefs$syllable <- "Syllable 1"
+result_pp_data_3_coefs <- as.data.frame(result_pp_data_3$summary$coef)
+result_pp_data_3_coefs$model <- "pp_data_3"
+result_pp_data_3_coefs$syllable <- "Syllable 2"
+all_coefs <- rbind(result_ap_data_1_coefs, result_ap_data_3_coefs, result_pp_data_1_coefs, result_pp_data_3_coefs)
+
+# Prepare data for plotting
+all_coefs <- all_coefs %>%
+  rownames_to_column("term") %>%
+  mutate(conf.low = Estimate - 1.96 * `Std. Error`,
+         conf.high = Estimate + 1.96 * `Std. Error`,
+         significance = case_when(
+           `Pr(>|z|)` < 0.001 ~ "***",
+           `Pr(>|z|)` < 0.01 ~ "**",
+           `Pr(>|z|)` < 0.05 ~ "*",
+           TRUE ~ ""
+         ),
+         model_type = ifelse(str_detect(model, "1"), "Model 1", "Model 3"),
+         model_color = ifelse(str_detect(model, "pp"), "Penultimate", "Antepenultimate"),
+         term_label = case_when(
+           term %in% acoustic_vars & term %in% id_vars ~ "both",
+           term %in% acoustic_vars ~ "acoustic",
+           term %in% id_vars ~ "id",
+           TRUE ~ "other"
+         ),
+         interaction_label = case_when(
+           str_detect(term, "Intercept") ~ 1,
+           str_detect(term, ":") ~ 3,
+           TRUE ~ 2
+         ))
+
+# Update term names for better readability
+all_coefs <- all_coefs %>%
+  mutate(old_term = term) %>%
+  mutate(term = str_replace_all(term, "1", "")) %>%
+  mutate(term = str_replace_all(term, "2", "")) %>%
+  mutate(term = str_replace_all(term, "3", "")) %>%
+  mutate(term = str_replace_all(term, "_", " ")) %>%
+  mutate(term = str_replace_all(term, "dprime battery up", "(battery d')")) %>%
+  mutate(term = str_replace_all(term, "mean", "")) %>%
+  mutate(term = str_replace_all(term, "italian lextale score", "lexITA")) %>%
+  mutate(term = str_replace_all(term, "lextale score", "lexTALE")) %>%
+  mutate(term = str_replace_all(term, "scaled", "")) %>%
+  mutate(term = str_replace_all(term, "dprime", "")) %>%
+  mutate(term = str_replace_all(term, "autism score", "AQ")) %>%
+  mutate(term = str_replace_all(term, "tilt", "spectral tilt")) %>%
+  mutate(term = str_replace_all(term, "(battery d') dur", "(battery d') duration"))
+
+# Define the order of terms
+ordered_terms <- all_coefs %>%
+  arrange(interaction_label, term_label, model) %>%
+  pull(term) %>%
+  unique()
+ordered_terms
+
+# Set factor levels for term
+all_coefs$term <- factor(all_coefs$term, levels = ordered_terms)
+
+tidy_combined$term <- factor(tidy_combined$term, levels = ordered_terms_order)
+
+
+# Function to create coefficient plot with confidence intervals and significance markers
+create_coef_plot <- function(coef_df, model_label, remove_y_labels = FALSE) {
+  plot <- ggplot(coef_df, aes(x = Estimate, y = term, color = model_color)) +
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    geom_point(position = position_dodge(width = 0.5)) +
+    geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2, position = position_dodge(width = 0.5)) +
+    geom_text(aes(label = significance, x = 2.5, color = model_color), vjust = 0.5, position = position_dodge(width = 0.5),show.legend = FALSE) +
+    labs(title = "",
+         x = "Estimate",
+         y = if (remove_y_labels) NULL else "Term",
+         color = "Model Type") +
+    theme_minimal() +
+    theme(legend.position = "top",
+          axis.text.y = if (remove_y_labels) element_blank() else element_markdown(),
+          axis.ticks.y = if (remove_y_labels) element_blank() else element_line()) +
+    facet_wrap(.~ syllable,scales="free_x")+
+  scale_color_manual(values = c("#E77500","#000000")) +
+  theme(legend.position = "bottom")
+  return(plot)
+}
+
+# Create and display the plot
+plot <- create_coef_plot(all_coefs, "")
+plot
+
+ggsave("../visuals/extended_analysis.jpeg", plot = plot , width = 8, height = 6, dpi = 300)
+```
+
+```{r}
+library(conflicted)
+library(caret)
+library(randomForest)
+library(pdp)
+library(gridExtra)
+
+conflicts_prefer(dplyr::filter)
+# Combine and preprocess data
+full_data <- rbind(ap_data_1_id, ap_data_3_id, pp_data_1_id, pp_data_3_id)
+
+
+full_data_clean <- full_data %>%
+  select(stress_play, syllable, dprime_battery_up_dur, dprime_battery_up_formants, dprime_battery_up_ptich, dprime_battery_up_risetime,
+         lextale_score, italian_lextale_score, mean_working_memory, autism_score)%>%
+  unique()%>%
+  filter(syllable != 2)%>%
+  mutate(word_and_stress = as.factor(paste(stress_play, syllable, sep = "")))%>%
+  select(-c(stress_play, syllable))%>%
+  na.omit()
+
+# Standardize the data
+preProc <- preProcess(full_data_clean[, -ncol(full_data_clean)], method = c("center", "scale"))
+data_standardized <- predict(preProc, full_data_clean)
+
+# Define predictors and response
+predictors <- names(data_standardized)[-ncol(data_standardized)]
+response <- "word_and_stress"
+
+# Define training control
+train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+
+# Fit k-NN model
+set.seed(123)
+knn_model <- train(as.formula(paste(response, "~ .")), data = data_standardized, method = "knn", trControl = train_control, tuneLength = 10)
+
+# Print the best k
+print(knn_model$bestTune)
+
+# Print model summary
+print(knn_model)
+
+# Split data into training and test sets
+set.seed(123)
+trainIndex <- createDataPartition(data_standardized[[response]], p = 0.8, list = FALSE)
+data_train <- data_standardized[trainIndex, ]
+data_test <- data_standardized[-trainIndex, ]
+
+# Predict on the test set
+predictions <- predict(knn_model, newdata = data_test)
+
+# Confusion matrix
+confusionMatrix(predictions, data_test[[response]])
+
+# Plot accuracy vs. number of neighbors
+knn_results <- knn_model$results
+ggplot(knn_results, aes(x = k, y = Accuracy)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "k-NN Model Performance", x = "Number of Neighbors (k)", y = "Accuracy") +
+  theme_minimal()
+
+# Fit random forest model for variable importance
+set.seed(123)
+rf_model <- randomForest(as.formula(paste(response, "~ .")), data = data_standardized, importance = TRUE)
+
+# View variable importance
+importance(rf_model)
+varImpPlot(rf_model)
+
+# Recursive Feature Elimination (RFE) with random forest
+set.seed(123)
+control <- rfeControl(functions = rfFuncs, method = "cv", number = 10)
+results <- rfe(data_train[, predictors], data_train[[response]], sizes = c(1:10), rfeControl = control)
+print(results)
+predictors(results)
+plot(results, type = c("g", "o"))
+
+# Partial Dependence Plots (PDPs) for important predictors
+library(pdp)
+library(ggplot2)
+library(gridExtra)
+```
+
+```{r}
+
+full_data <- rbind(ap_data_1_id, ap_data_3_id, pp_data_1_id, pp_data_3_id)
+
+full_data_clean2 <- full_data %>%
+  select(target_looks, stress_play, syllable, mean_pitch, mean_amplitude, duration, mean_tilt,
+         dprime_battery_up_dur, dprime_battery_up_formants, dprime_battery_up_ptich, dprime_battery_up_risetime,
+         lextale_score, italian_lextale_score, mean_working_memory, autism_score, participant.private.id) %>%
+  filter(syllable != 2) %>%
+  mutate(word_and_stress = as.factor(paste(stress_play, syllable,target_looks, sep = ""))) %>%
+  select(-c(stress_play, syllable, participant.private.id,target_looks)) %>%
+  na.omit()
+# Standardize the data
+preProc2 <- preProcess(full_data_clean2[, -ncol(full_data_clean2)], method = c("center", "scale"))
+data_standardized2 <- predict(preProc2, full_data_clean2)
+
+# Define predictors and response
+predictors2 <- names(data_standardized2)[-ncol(data_standardized2)]
+response2 <- "word_and_stress"
+
+# Define training control
+train_control2 <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+
+# Fit k-NN model
+set.seed(123)
+knn_model2 <- train(as.formula(paste(response2, "~ .")), data = data_standardized2, method = "knn", trControl = train_control2, tuneLength = 10)
+
+# Print the best k
+print(knn_model2$bestTune)
+
+# Print model summary
+print(knn_model2)
+
+# Split data into training and test sets
+set.seed(123)
+trainIndex2 <- createDataPartition(data_standardized2[[response2]], p = 0.8, list = FALSE)
+data_train2 <- data_standardized2[trainIndex2, ]
+data_test2 <- data_standardized2[-trainIndex2, ]
+
+# Predict on the test set
+predictions2 <- predict(knn_model2, newdata = data_test2)
+
+# Confusion matrix
+confusionMatrix(predictions2, data_test2[[response2]])
+
+# Plot accuracy vs. number of neighbors
+knn_results2 <- knn_model2$results
+ggplot(knn_results2, aes(x = k, y = Accuracy)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "k-NN Model Performance", x = "Number of Neighbors (k)", y = "Accuracy") +
+  theme_minimal()
+
+# Fit random forest model for variable importance
+set.seed(123)
+rf_model2 <- randomForest(as.formula(paste(response2, "~ .")), data = data_standardized2, importance = TRUE)
+
+# View variable importance
+importance(rf_model2)
+varImpPlot(rf_model2)
+
+# Recursive Feature Elimination (RFE) with random forest
+set.seed(123)
+control2 <- rfeControl(functions = rfFuncs, method = "cv", number = 10)
+results2 <- rfe(data_train2[, predictors2], data_train2[[response2]], sizes = c(1:10), rfeControl = control2)
+print(results2)
+predictors(results2)
+plot(results2, type = c("g", "o"))
+```
+
+```{r}
+
+# Generate PDP for 'duration2'
+pdp_duration2 <- pdp::partial(rf_model2, pred.var = "duration", train = data_standardized2)
+plot_duration2 <- autoplot(pdp_duration2)
+
+# Generate PDP for 'mean_pitch2'
+pdp_mean_pitch2 <- pdp::partial(rf_model2, pred.var = "mean_pitch", train = data_standardized2)
+plot_mean_pitch2 <- autoplot(pdp_mean_pitch2)
+
+# Generate PDP for 'mean_tilt2'
+pdp_mean_tilt2 <- pdp::partial(rf_model2, pred.var = "mean_tilt", train = data_standardized2)
+plot_mean_tilt2 <- autoplot(pdp_mean_tilt2)
+
+# Generate PDP for 'mean_amplitude2'
+pdp_mean_amplitude2 <- pdp::partial(rf_model2, pred.var = "mean_amplitude", train = data_standardized2)
+plot_mean_amplitude2 <- autoplot(pdp_mean_amplitude2)
+
+# Generate PDP for 'dprime_battery_up_ptich2'
+pdp_dprime_battery_up_ptich2 <- pdp::partial(rf_model2, pred.var = "dprime_battery_up_ptich", train = data_standardized2)
+plot_dprime_battery_up_ptich2 <- autoplot(pdp_dprime_battery_up_ptich2)
+
+# Generate PDP for 'dprime_battery_up_risetime2'
+pdp_dprime_battery_up_risetime2 <- pdp::partial(rf_model2, pred.var = "dprime_battery_up_risetime", train = data_standardized2)
+plot_dprime_battery_up_risetime2 <- autoplot(pdp_dprime_battery_up_risetime2)
+
+# Generate PDP for 'dprime_battery_up_formants2'
+pdp_dprime_battery_up_formants2 <- pdp::partial(rf_model2, pred.var = "dprime_battery_up_formants", train = data_standardized2)
+plot_dprime_battery_up_formants2 <- autoplot(pdp_dprime_battery_up_formants2)
+
+# Generate PDP for 'dprime_battery_up_dur2'
+pdp_dprime_battery_up_dur2 <- pdp::partial(rf_model2, pred.var = "dprime_battery_up_dur", train = data_standardized2)
+plot_dprime_battery_up_dur2 <- autoplot(pdp_dprime_battery_up_dur2)
+
+# Generate PDP for 'autism_score2'
+pdp_autism_score2 <- pdp::partial(rf_model2, pred.var = "autism_score", train = data_standardized2)
+plot_autism_score2 <- autoplot(pdp_autism_score2)
+
+# Arrange plots in a grid layout
+grid.arrange(plot_duration2, plot_mean_pitch2, plot_mean_tilt2, plot_mean_amplitude2, 
+             plot_dprime_battery_up_ptich2, plot_dprime_battery_up_risetime2, 
+             plot_dprime_battery_up_formants2, plot_dprime_battery_up_dur2, 
+             plot_autism_score2, ncol = 3)
+
+```
+
+```{r}
+
+# Function to plot k-NN accuracy
+plot_knn_accuracy <- function(knn_results) {
+  ggplot(knn_results, aes(x = k, y = Accuracy)) +
+    geom_line() +
+    geom_point() +
+    labs(title = "k-NN Model Performance", x = "Number of Neighbors (k)", y = "Accuracy") +
+    theme_minimal()
+}
+
+# Function to plot confusion matrix
+plot_confusion_matrix <- function(confusion_matrix) {
+  cm_df <- as.data.frame(confusion_matrix$table)
+  ggplot(data = cm_df, aes(x = Reference, y = Prediction, fill = Freq)) +
+    geom_tile() +
+    geom_text(aes(label = Freq), vjust = 1) +
+    scale_fill_gradient(low = "white", high = "blue") +
+    labs(title = "k-NN Confusion Matrix", x = "Actual", y = "Predicted") +
+    theme_minimal()
+}
+
+# Function to plot random forest variable importance
+plot_rf_importance <- function(rf_model) {
+  varImpPlot(rf_model, main = "Random Forest Variable Importance")
+}
+
+# k-NN and Random Forest for first dataset
+knn_predictions <- predict(knn_model, newdata = data_test)
+knn_confusion <- confusionMatrix(knn_predictions, data_test[[response]])
+knn_results_plot <- plot_knn_accuracy(knn_model$results)
+knn_confusion_plot <- plot_confusion_matrix(knn_confusion)
+
+rf_importance_plot <- plot_rf_importance(rf_model)
+
+# k-NN and Random Forest for second dataset
+knn_predictions2 <- predict(knn_model2, newdata = data_test2)
+knn_confusion2 <- confusionMatrix(knn_predictions2, data_test2[[response2]])
+knn_results_plot2 <- plot_knn_accuracy(knn_model2$results)
+knn_confusion_plot2 <- plot_confusion_matrix(knn_confusion2)
+
+rf_importance_plot2 <- plot_rf_importance(rf_model2)
+
+library(pROC)
+# Function to plot ROC curve
+plot_roc_curve <- function(predictions, true_values, model_name) {
+  roc_obj <- roc(response = true_values, predictor = as.numeric(predictions))
+  ggroc(roc_obj) +
+    labs(title = paste(model_name, "ROC Curve"), x = "False Positive Rate", y = "True Positive Rate") +
+    theme_minimal()
+}
+
+# ROC Curve for first k-NN model
+knn_roc_plot <- plot_roc_curve(knn_predictions, data_test[[response]], "k-NN Model")
+
+# ROC Curve for second k-NN model
+knn_roc_plot2 <- plot_roc_curve(knn_predictions2, data_test2[[response2]], "k-NN Model 2")
+
+# Display ROC plots
+print(knn_roc_plot)
+print(knn_roc_plot2)
+
+# Display the plots
+# k-NN plots
+print(knn_results_plot)
+print(knn_confusion_plot)
+
+# Random Forest variable importance
+print(rf_importance_plot)
+
+# k-NN plots for second dataset
+print(knn_results_plot2)
+print(knn_confusion_plot2)
+
+# Random Forest variable importance for second dataset
+print(rf_importance_plot2)
+```
+
+```{r}
+r_version <- R.version
+cat("R version:", r_version$version.string, "\n")
+
+# bibtex format
+r_citation <- citation()
+bibtex_citation <- toBibtex(r_citation)
+cat(bibtex_citation)
+
+
+
+```
+```
+Individual differences analysis---- This is the analysis in the paper
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(conflicted)
+#parts_kept<-ets_exp1_all_agg_part_wider%>%ungroup%>%select(participant.private.id)%>%unique()%>%count()
+#write.csv(ets_exp1_all_agg_part_wider, "../../ppcc_iflu_data/ets_exp1_all_agg_part_wider.csv")
+
+
+id_data<-battery_agg_wider_simp%>%
+  left_join(digit_cleaned_simp)%>%
+  left_join(lextale_agg_cleaned_simp)%>%
+  left_join(italian_lextale_agg_cleaned_simp)%>%
+  left_join(autism_cleaned)
+
+measures <- id_data %>%
+  select(participant.private.id, starts_with("dprime_battery_up_"), mean_working_memory, 
+         lextale_score, italian_lextale_score, autism_score) %>%
+  mutate(across(starts_with("dprime_battery_up_") | ends_with("score") | 
+                  starts_with("mean_working_memory"), scale, .names = "scaled_{col}"))
+
+
+long_data <- measures %>%
+  select(participant.private.id, contains("scaled_")) %>%
+  pivot_longer(-participant.private.id, names_to = "measure", values_to = "value") %>%
+  mutate(measure = gsub("scaled_", "", measure))%>%
+  mutate(old_term = measure) %>%
+  mutate(measure = str_replace_all(measure, "_", " ")) %>%
+  mutate(measure = str_replace_all(measure, "dprime battery up", "(Battery d') \n")) %>%
+  mutate(measure = str_replace_all(measure, "mean", "")) %>%
+  mutate(measure = str_replace_all(measure, "italian lextale score", "LexITA")) %>%
+  mutate(measure = str_replace_all(measure, "lextale score", "LexTALE")) %>%
+  mutate(measure = str_replace_all(measure, "scaled", "")) %>%
+  mutate(measure = str_replace_all(measure, "dprime", "")) %>%
+  mutate(measure = str_replace_all(measure, "autism score", "AQ")) %>%
+  mutate(measure = str_replace_all(measure, "tilt", "spec tilt")) %>%
+  mutate(measure = str_replace_all(measure, "dur", "Duration"))%>%
+mutate(measure = str_replace_all(measure, "work", "Work"))%>%
+  mutate(measure = str_replace_all(measure, "ptich", "Pitch"))%>%
+  mutate(measure = str_replace_all(measure, "rise", "Rise "))%>%
+  mutate(measure = str_replace_all(measure, "formants", "Formants"))
+
+library(gghalves)
+plot<-ggplot(long_data, aes(x = measure, y = value)) +
+  geom_half_violin(trim = FALSE, fill = NA, color = "black", side = "l") +
+  geom_half_boxplot(width = 0.15, outlier.shape = NA, fill = NA, color = "black", side = "r") +
+  geom_point(shape = 95, color = "black", size = 10, alpha = 0.3, position = position_nudge(x = -0.1)) +
+  labs(title = "",
+       x = "Task Measures",
+       y = "Centered Values") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.title.x.top = element_text(),
+        axis.title.x = element_blank(),
+        axis.text.x.top = element_text(),
+        axis.text.x = element_blank(),
+        axis.ticks.x.top = element_line(),
+        axis.ticks.x = element_blank(),
+        axis.line.x.top = element_line(),
+        axis.line.x = element_blank()) +
+  scale_x_discrete(position = "top")+
+  geom_line(aes(color = factor(participant.private.id),group=participant.private.id), size = .1,alpha=1)
+
+plot
+ggsave("../visuals/plot_raw_task.jpeg", plot = plot , width = 10, height = 5, dpi = 300)
+```
+
+```{r}
+fit_models_acoustic_id <- function(data) {
+  # Filter the data to remove NA values
+  data_filtered <- na.omit(data)
+  
+  # Create the design matrix and response vector
+  x <- model.matrix(target_looks ~ 
+    # Main effects (General Sensitivity Measures)
+    autism_score + italian_lextale_score + lextale_score + mean_working_memory +
+    
+    # Main effects (Sensitivity Measures)
+    dprime_battery_up_dur + dprime_battery_up_ptich + dprime_battery_up_risetime + dprime_battery_up_formants +
+    
+    # Main effects (Acoustic Measures)
+    mean_pitch_scaled + duration_scaled + mean_amplitude_scaled + mean_tilt_scaled +
+    
+    # Two-way interactions (Acoustic^2)
+    mean_pitch_scaled:duration_scaled + mean_pitch_scaled:mean_amplitude_scaled + mean_pitch_scaled:mean_tilt_scaled + 
+    duration_scaled:mean_amplitude_scaled + duration_scaled:mean_tilt_scaled + 
+    mean_amplitude_scaled:mean_tilt_scaled +
+    
+    # Three-way interactions (Acoustic^2 with Sensitivity Measures)
+    mean_pitch_scaled:duration_scaled:dprime_battery_up_dur + mean_pitch_scaled:duration_scaled:dprime_battery_up_ptich +
+    mean_pitch_scaled:duration_scaled:dprime_battery_up_risetime + mean_pitch_scaled:duration_scaled:dprime_battery_up_formants +
+    
+    mean_pitch_scaled:mean_amplitude_scaled:dprime_battery_up_dur + mean_pitch_scaled:mean_amplitude_scaled:dprime_battery_up_ptich +
+    mean_pitch_scaled:mean_amplitude_scaled:dprime_battery_up_risetime + mean_pitch_scaled:mean_amplitude_scaled:dprime_battery_up_formants +
+    
+    mean_pitch_scaled:mean_tilt_scaled:dprime_battery_up_dur + mean_pitch_scaled:mean_tilt_scaled:dprime_battery_up_ptich +
+    mean_pitch_scaled:mean_tilt_scaled:dprime_battery_up_risetime + mean_pitch_scaled:mean_tilt_scaled:dprime_battery_up_formants +
+    
+    duration_scaled:mean_amplitude_scaled:dprime_battery_up_dur + duration_scaled:mean_amplitude_scaled:dprime_battery_up_ptich +
+    duration_scaled:mean_amplitude_scaled:dprime_battery_up_risetime + duration_scaled:mean_amplitude_scaled:dprime_battery_up_formants +
+    
+    duration_scaled:mean_tilt_scaled:dprime_battery_up_dur + duration_scaled:mean_tilt_scaled:dprime_battery_up_ptich +
+    duration_scaled:mean_tilt_scaled:dprime_battery_up_risetime + duration_scaled:mean_tilt_scaled:dprime_battery_up_formants +
+    
+    mean_amplitude_scaled:mean_tilt_scaled:dprime_battery_up_dur + mean_amplitude_scaled:mean_tilt_scaled:dprime_battery_up_ptich +
+    mean_amplitude_scaled:mean_tilt_scaled:dprime_battery_up_risetime + mean_amplitude_scaled:mean_tilt_scaled:dprime_battery_up_formants,
+    
+    data = data_filtered)[, -1]  # Exclude intercept
+  
+  # Response variable
+  y <- data_filtered$target_looks
+  
+  # Set up lambda values for LASSO regression
+  lambda_search_space <- 10^seq(10, -2, length = 100)
+  
+  # Fit the LASSO regression model
+  lasso_model <- glmnet(x, y, alpha = 1, lambda = lambda_search_space, family = "binomial")
+  
+  # Cross-validation to find the best lambda
+  cv <- cv.glmnet(x, y, alpha = 1, family = "binomial")
+  best_lambda <- cv$lambda.min
+  
+  # Extract coefficients for the best lambda
+  coef_lasso_best <- coef(lasso_model, s = best_lambda)
+  
+  # Convert coefficients to data frame for visualization
+  coef_df <- as.data.frame(as.matrix(coef_lasso_best))
+  coef_df$Predictor <- rownames(coef_df)
+  rownames(coef_df) <- NULL
+  
+  # Visualize the coefficients
+  coef_plot <- ggplot(coef_df, aes(x = Predictor, y = s1)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    labs(title = paste("LASSO Regression Coefficients at Best Lambda (", round(best_lambda, 4), ")", sep = ""),
+         x = "Predictor",
+         y = "Coefficient Value") +
+    theme_minimal()
+  print(coef_plot)
+  
+  # Select significant variables based on LASSO coefficients
+  significant_vars <- coef_df %>%
+    filter(s1 != 0) %>%
+    pull(Predictor)
+  
+  # Remove intercept from significant variables
+  significant_vars <- significant_vars[significant_vars != "(Intercept)"]
+  
+  # Prepare formula for GLMM using significant variables
+  formula_str <- paste("target_looks ~", paste(significant_vars, collapse = " + "), "+ (1|word)")
+  formula <- as.formula(formula_str)
+  
+  # Fit GLMM with selected variables
+  model_selected <- glmer(formula, data = data_filtered, family = "binomial")
+  
+  # Print the summary of the GLMM
+  print(summary(model_selected))
+  
+  # Return the summary and the plot
+  list(summary = summary(model_selected), plot = coef_plot, lasso_coefs = coef_df)
+}
+
+```
