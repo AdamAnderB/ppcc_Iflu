@@ -13,8 +13,8 @@ McQueen (2012)
 Bramlett, A. A. & Wiener, S. (2024). Italian Word Stress: A Replication & LASSO Extension of Sulpizio & McQueen (2012). *Journal of Cultural Cognitive Science.*
 
 ## Resources
-
-For details and resources, visit: [Open Science Framework - Project Repository]([https://osf.io/xyz123/?view_only=examplelink](https://osf.io/tfc8r/?view_only=085713b90a994403b25c31883f6cdccd)).
+-available here all scripts and visuals. For scripts view scirpts folder
+-For details about the aper, visit: [Open Science Framework - Project Repository]([https://osf.io/tfc8r/?view_only=085713b90a994403b25c31883f6cdccd](https://osf.io/tfc8r/?view_only=085713b90a994403b25c31883f6cdccd).
 
 ## Overview
 
