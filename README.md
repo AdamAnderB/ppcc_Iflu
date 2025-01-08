@@ -1,6 +1,12 @@
 # ppcc_Iflu
 
-# Italian Word Stress: Replication & Extension
+# Italian Word Stress: Replication & Extension S&M(2012)
+
+## Title:
+Individual Differences Modulate Prediction of
+Italian Words Based on Lexical Stress: A Close
+Replication and LASSO Extension of Sulpizio and
+McQueen (2012)
 
 ## *Reference:*
 
@@ -23,7 +29,7 @@ Exploratory analyses examined individual differences in cue use, timing, and lin
 - **Findings:** Antepenultimate stressed words showed higher spectral tilt and duration (syllable 1) compared to penultimate. Matches the original study.
 
 - **Figure 1:** Acoustic Features by Stress Types.
-<img src="visuals/raw_acoustics_combined.jpeg" alt="Acoustics" width="400">
+<img src="visuals/raw_acoustics_combined.jpeg" alt="Acoustics" width="800">
   
 
 ### Target & Competitor Analysis
@@ -32,7 +38,7 @@ Exploratory analyses examined individual differences in cue use, timing, and lin
 
 
 - **Figure 2:** Target & Competitor Fixations Over Time.
-<img src="visuals/pen_vs_anti_pen_id_combo.jpeg" alt="Target-Competitor-glm" width="400">
+<img src="visuals/pen_vs_anti_pen_id_combo.jpeg" alt="Target-Competitor-glm" width="600">
 
 ### Bias Analysis
 - **What it is:** Tested for bias toward penultimate stress (higher frequency in Italian).
@@ -43,21 +49,21 @@ Exploratory analyses examined individual differences in cue use, timing, and lin
 - **Findings:** Spectral tilt and pitch were key predictors for antepenultimate stress. Penultimate stress showed no strong predictors.
 
 - **Figure 3:** Acoustic Cue intergration.
-<img src="visuals/combined_plot_o_n.jpeg" alt="Acoustics" width="400">
+<img src="visuals/combined_plot_o_n.jpeg" alt="Acoustics" width="800">
 
 ### Individual Differences
 - **What it is:** Exploratory analysis of behavioral tasks (pitch, duration, risetime), linguistic proficiency, and memory.
 - **Findings:** Higher sensitivity to pitch and Italian proficiency predicted more accurate fixations.
 
 - **Figure 4:** Individual differences.
-<img src="visuals/plot_raw_task.jpeg" alt="individual_differences" width="400">
+<img src="visuals/plot_raw_task.jpeg" alt="individual_differences" width="800">
 
 ### LASSO Regression
 - **What it is:** Addressed collinearity and selected key predictors.
 - **Findings:** Pitch sensitivity and spectral tilt were strong predictors, particularly for antepenultimate stress.
 
 - **Figure 5:** LASSO Model Weights for Features.
-<img src="visuals/extended_analysis.jpeg" alt="LASSO" width="400">
+<img src="visuals/extended_analysis.jpeg" alt="LASSO" width="800">
 
 
 
