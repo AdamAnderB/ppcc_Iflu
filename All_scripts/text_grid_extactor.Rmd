@@ -258,7 +258,8 @@ mean_duration <- mean(file_data$duration_ms)
 
 # Calculate the standard deviation of the durations in milliseconds
 sd_duration <- sd(file_data$duration_ms)
-
+mean_duration
+sd_duration
 ```
 
 

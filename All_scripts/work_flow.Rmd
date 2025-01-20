@@ -3,8 +3,8 @@ title: "work_flow"
 author: "blind"
 date: "2024-04-15"
 output:
-  word_document: default
   pdf_document: default
+  word_document: default
   html_document: default
 ---
 
@@ -1777,7 +1777,7 @@ analysis_3_plot <- ggplot(tidy_combined, aes(x = estimate, y = term, color = mod
 analysis_3_plot 
 
 #ggsave("../visuals/analysis_3_plot.jpeg", plot = analysis_3_plot , width = 8, height = 5, dpi = 300)
-````
+```
 3.1.4 without interactions (primary models):
 ```{r}
 # Function to perform backward elimination

@@ -3,8 +3,8 @@ title: "work_flow"
 author: "blind"
 date: "2024-04-15"
 output:
-  word_document: default
   pdf_document: default
+  word_document: default
   html_document: default
 ---
 
