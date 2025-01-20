@@ -27,9 +27,6 @@ library(leaps)
 library(glmnet)
 library(lattice)
 library(ltm)
-library(broom)
-library(broom.mixed)
-library(gghalves)
 ```
 
 ```{r}
@@ -1854,7 +1851,6 @@ summary(simplified_pp_mod_3_ni)
 
 ```{r}
 # Extract summaries for each model
-
 tidy_full_ni <- tidy(simplified_ap_mod_1_ni, effects = "fixed")
 tidy_full_2_ni <- tidy(simplified_pp_mod_1_ni, effects = "fixed")
 tidy_full_1_3_ni <- tidy(simplified_ap_mod_3_ni, effects = "fixed")
@@ -1941,7 +1937,7 @@ analysis_3_plot <- analysis_3_plot +
 combined_plot_o_n <- plot_grid(analysis_3_plot_ni, analysis_3_plot, ncol = 2)
 combined_plot_o_n
 
-#ggsave("../visuals/combined_plot_o_n.jpeg", plot = combined_plot_o_n , width = 8, height = 5, dpi = 600)
+#ggsave("../visuals/combined_plot_o_n.jpeg", plot = combined_plot_o_n , width = 8, height = 5, dpi = 300)
 ```
 
 #competitor looks analyses
@@ -2064,6 +2060,7 @@ library(conflicted)
 #parts_kept<-ets_exp1_all_agg_part_wider%>%ungroup%>%select(participant.private.id)%>%unique()%>%count()
 #write.csv(ets_exp1_all_agg_part_wider, "../../ppcc_iflu_data/ets_exp1_all_agg_part_wider.csv")
 
+View(id_data)
 id_data<-battery_agg_wider_simp%>%
   left_join(digit_cleaned_simp)%>%
   left_join(lextale_agg_cleaned_simp)%>%
@@ -2436,7 +2433,7 @@ create_coef_plot <- function(coef_df, model_label, remove_y_labels = FALSE) {
 plot <- create_coef_plot(all_coefs, "")
 plot
 
-ggsave("../visuals/extended_analysis.jpeg", plot = plot , width = 8, height = 6, dpi = 600)
+#ggsave("../visuals/extended_analysis.jpeg", plot = plot , width = 8, height = 6, dpi = 300)
 ```
 
 only for citing purposes
